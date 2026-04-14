@@ -9,10 +9,6 @@ build:
   artifacts:
     "*": /
 run:
+  command: npm start
   persistenceMount: /data
-  scriptName: null
-  scriptArguments: null
-  nodeArguments: null
-  command: npm run start
-  containerPort: 80
-  servicePort: 80
+  containerPort: 3000
