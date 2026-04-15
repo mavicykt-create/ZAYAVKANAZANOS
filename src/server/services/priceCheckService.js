@@ -19,21 +19,32 @@ export async function getPriceCheckCategoriesWithPages() {
   await releaseExpiredPageLocks();
   const rows = await all(
     `SELECT c.id AS categoryId, c.name AS categoryName, c.sort_order AS sortOrder,
-            COUNT(p.page_number) AS pagesCount
+            COUNT(p.id) AS productsCount
      FROM catalog_categories c
-     LEFT JOIN price_check_pages p ON p.category_id = c.id
+     LEFT JOIN catalog_products p ON p.category_id = c.id
      GROUP BY c.id, c.name, c.sort_order
      ORDER BY c.sort_order ASC, c.id ASC`,
   );
-  return rows.map((item) => ({
-    categoryId: Number(item.categoryId),
-    categoryName: item.categoryName,
-    pagesCount: Math.max(1, Number(item.pagesCount || 0)),
-  }));
+  return rows.map((item) => {
+    const productsCount = Number(item.productsCount || 0);
+    const pagesCount = Math.max(1, Math.ceil(productsCount / PAGE_SIZE));
+    return {
+      categoryId: Number(item.categoryId),
+      categoryName: item.categoryName,
+      pagesCount,
+      pages: Array.from({ length: pagesCount }, (_, idx) => ({ pageNumber: idx + 1 })),
+    };
+  });
 }
 
 export async function listPriceCheckPages(categoryId, currentUserId) {
   await releaseExpiredPageLocks();
+  const row = await get(
+    `SELECT COUNT(*) AS productsCount FROM catalog_products WHERE category_id = ?`,
+    [Number(categoryId)],
+  );
+  const productsCount = Number(row?.productsCount || 0);
+  const pagesCount = Math.max(1, Math.ceil(productsCount / PAGE_SIZE));
   const pages = await all(
     `SELECT p.category_id AS categoryId, p.page_number AS pageNumber, p.locked_by AS lockedBy,
             p.locked_at AS lockedAt, p.completed_at AS completedAt, u.login AS lockedByLogin
@@ -43,42 +54,56 @@ export async function listPriceCheckPages(categoryId, currentUserId) {
      ORDER BY p.page_number ASC`,
     [Number(categoryId)],
   );
-  return pages.map((item) => ({
-    categoryId: Number(item.categoryId),
-    pageNumber: Number(item.pageNumber),
-    lockedBy: item.lockedBy ? Number(item.lockedBy) : null,
-    lockedByLogin: item.lockedByLogin || null,
-    lockedAt: item.lockedAt ? Number(item.lockedAt) : null,
-    completedAt: item.completedAt ? Number(item.completedAt) : null,
-    isLockedByMe: item.lockedBy ? Number(item.lockedBy) === Number(currentUserId) : false,
-  }));
+  const byNumber = new Map(pages.map((item) => [Number(item.pageNumber), item]));
+  return Array.from({ length: pagesCount }, (_, index) => {
+    const pageNumber = index + 1;
+    const item = byNumber.get(pageNumber);
+    return {
+      categoryId: Number(categoryId),
+      pageNumber,
+      lockedBy: item?.lockedBy ? Number(item.lockedBy) : null,
+      lockedByLogin: item?.lockedByLogin || null,
+      lockedAt: item?.lockedAt ? Number(item.lockedAt) : null,
+      completedAt: item?.completedAt ? Number(item.completedAt) : null,
+      isLockedByMe: item?.lockedBy ? Number(item.lockedBy) === Number(currentUserId) : false,
+    };
+  });
+}
+
+async function ensurePageExists(categoryId, pageNumber) {
+  const pages = await listPriceCheckPages(categoryId, null);
+  const target = pages.find((item) => Number(item.pageNumber) === Number(pageNumber));
+  if (!target) throw new HttpError(404, 'Страница не найдена');
 }
 
 export async function lockPriceCheckPage(categoryId, pageNumber, userId) {
   await releaseExpiredPageLocks();
+  await ensurePageExists(categoryId, pageNumber);
   const page = await get(
     `SELECT locked_by AS lockedBy FROM price_check_pages WHERE category_id = ? AND page_number = ?`,
     [Number(categoryId), Number(pageNumber)],
   );
-  if (!page) throw new HttpError(404, 'Страница не найдена');
-  if (page.lockedBy && Number(page.lockedBy) !== Number(userId)) {
+  if (page?.lockedBy && Number(page.lockedBy) !== Number(userId)) {
     const holder = await get(`SELECT login FROM users WHERE id = ?`, [Number(page.lockedBy)]);
     throw new HttpError(409, `Занято: ${holder?.login || 'другой сотрудник'}`);
   }
   await run(
-    `UPDATE price_check_pages
-     SET locked_by = ?, locked_at = ?
-     WHERE category_id = ? AND page_number = ?`,
-    [Number(userId), nowTs(), Number(categoryId), Number(pageNumber)],
+    `INSERT INTO price_check_pages (category_id, page_number, locked_by, locked_at, completed_by, completed_at)
+     VALUES (?, ?, ?, ?, NULL, NULL)
+     ON CONFLICT(category_id, page_number) DO UPDATE SET
+       locked_by = excluded.locked_by,
+       locked_at = excluded.locked_at`,
+    [Number(categoryId), Number(pageNumber), Number(userId), nowTs()],
   );
 }
 
 export async function unlockPriceCheckPage(categoryId, pageNumber, userId, isAdmin = false) {
+  await ensurePageExists(categoryId, pageNumber);
   const page = await get(
     `SELECT locked_by AS lockedBy FROM price_check_pages WHERE category_id = ? AND page_number = ?`,
     [Number(categoryId), Number(pageNumber)],
   );
-  if (!page) throw new HttpError(404, 'Страница не найдена');
+  if (!page) return;
   if (page.lockedBy && Number(page.lockedBy) !== Number(userId) && !isAdmin) {
     throw new HttpError(403, 'Страница занята другим сотрудником');
   }
@@ -104,13 +129,14 @@ async function assertPageLock(categoryId, pageNumber, userId) {
     `SELECT locked_by AS lockedBy FROM price_check_pages WHERE category_id = ? AND page_number = ?`,
     [Number(categoryId), Number(pageNumber)],
   );
-  if (!row) throw new HttpError(404, 'Страница не найдена');
+  if (!row) throw new HttpError(409, 'Сначала займите страницу');
   if (!row.lockedBy || Number(row.lockedBy) !== Number(userId)) {
     throw new HttpError(409, 'Сначала займите страницу');
   }
 }
 
 export async function getPriceCheckPageProducts(categoryId, pageNumber, userId) {
+  await ensurePageExists(categoryId, pageNumber);
   await assertPageLock(categoryId, pageNumber, userId);
   const offset = (Number(pageNumber) - 1) * PAGE_SIZE;
   const products = await all(

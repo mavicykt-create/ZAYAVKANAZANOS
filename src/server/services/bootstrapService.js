@@ -20,9 +20,32 @@ export async function seedUsers() {
     { login: config.defaultUserLogin, password: config.defaultUserPassword, role: 'staff' },
   ];
   for (const item of defaults) {
-    const exists = await get(`SELECT id FROM users WHERE login = ?`, [item.login]);
-    if (exists) continue;
+    const exists = await get(
+      `SELECT id, password_hash AS passwordHash, role FROM users WHERE login = ?`,
+      [item.login],
+    );
     const ts = nowTs();
+    if (exists) {
+      const updates = [];
+      const params = [];
+      const targetHash = hashPassword(item.password);
+      const legacyHash = hashPassword('123456');
+      if (exists.passwordHash === legacyHash && exists.passwordHash !== targetHash) {
+        updates.push('password_hash = ?');
+        params.push(targetHash);
+      }
+      if (exists.role !== item.role) {
+        updates.push('role = ?');
+        params.push(item.role);
+      }
+      if (updates.length > 0) {
+        updates.push('updated_at = ?');
+        params.push(ts);
+        params.push(Number(exists.id));
+        await run(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
+      }
+      continue;
+    }
     await run(
       `INSERT INTO users (login, password_hash, role, is_active, last_login_at, created_at, updated_at)
        VALUES (?, ?, ?, 1, NULL, ?, ?)`,

@@ -11,7 +11,7 @@ router.get(
   requireAuth,
   asyncHandler(async (req, res) => {
     const products = await getProductsWithoutBarcode();
-    return json(res, true, { products });
+    return json(res, true, { products, items: products });
   }),
 );
 

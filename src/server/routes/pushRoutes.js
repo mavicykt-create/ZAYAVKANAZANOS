@@ -12,7 +12,19 @@ import { asyncHandler, json } from '../utils/http.js';
 const router = Router();
 
 router.get('/push/config', requireAuth, (req, res) => {
-  return json(res, true, getPushConfig());
+  const configData = getPushConfig();
+  return json(res, true, {
+    configured: configData.configured,
+    publicKey: configData.publicKey,
+  });
+});
+
+router.get('/push/vapid-public-key', requireAuth, (req, res) => {
+  const configData = getPushConfig();
+  return json(res, true, {
+    configured: configData.configured,
+    publicKey: configData.publicKey,
+  });
 });
 
 router.post(

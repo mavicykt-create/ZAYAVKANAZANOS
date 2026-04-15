@@ -177,7 +177,7 @@ async function subscribePush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     throw new Error('Push не поддерживается');
   }
-  const configData = await api('/api/push/config');
+  const configData = await api('/api/push/vapid-public-key');
   if (!configData.configured || !configData.publicKey) {
     throw new Error('Push-сервер не настроен (нет VAPID ключей)');
   }
@@ -721,16 +721,16 @@ async function renderProductCheck(note = '') {
   const payload = await api('/api/product-check/no-barcode');
   app.innerHTML = pageWrapper(
     'Проверка товара',
-    `Без штрих-кода: ${payload.products.length}`,
+    `Без штрих-кода: ${payload.items.length}`,
     `
       <div class="card">
         <div class="row between"><button class="btn btn-light" data-nav="/">На главную</button></div>
         ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
       </div>
       <div class="card">
-        ${payload.products.length === 0 ? '<div class="subtitle">Все товары содержат штрих-код</div>' : ''}
+        ${payload.items.length === 0 ? '<div class="subtitle">Все товары содержат штрих-код</div>' : ''}
         <div class="list">
-          ${payload.products.map((item) => `
+          ${payload.items.map((item) => `
             <div class="list-item">
               <div>
                 <div class="item-title">${escapeHtml(item.name)}</div>
