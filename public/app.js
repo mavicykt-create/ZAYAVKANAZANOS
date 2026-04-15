@@ -3,7 +3,9 @@ const state = {
   me: null,
   timers: [],
   loginDraft: 'admin',
-  passwordDraft: '123456',
+  passwordDraft: '7895123',
+  installPrompt: null,
+  pushReady: false,
 };
 
 const app = document.getElementById('app');
@@ -26,17 +28,10 @@ function addTimer(timerId) {
   state.timers.push(timerId);
 }
 
-function navigate(path, replace = false) {
-  if (window.location.pathname === path) return;
-  if (replace) window.history.replaceState({}, '', path);
-  else window.history.pushState({}, '', path);
-  renderRoute().catch((error) => renderFatal(error));
-}
-
-function authHeaders(extra = {}) {
-  const headers = { ...extra };
-  if (state.token) headers.Authorization = `Bearer ${state.token}`;
-  return headers;
+function authHeaders(headers = {}) {
+  const merged = { ...headers };
+  if (state.token) merged.Authorization = `Bearer ${state.token}`;
+  return merged;
 }
 
 async function api(path, options = {}) {
@@ -57,771 +52,400 @@ async function api(path, options = {}) {
   return data;
 }
 
-async function loadMe() {
+function navigate(path, replace = false) {
+  if (window.location.pathname === path) return;
+  if (replace) window.history.replaceState({}, '', path);
+  else window.history.pushState({}, '', path);
+  renderRoute().catch(renderErrorScreen);
+}
+
+function pageWrapper(title, subtitle = '', body = '') {
+  return `
+    <div class="page">
+      <header class="top-card">
+        <div>
+          <div class="brand">ZAN 1.1</div>
+          <h1>${escapeHtml(title)}</h1>
+          ${subtitle ? `<div class="subtitle">${escapeHtml(subtitle)}</div>` : ''}
+        </div>
+        <div class="top-actions">
+          ${state.me ? `<span class="pill">${escapeHtml(state.me.login)} · ${escapeHtml(state.me.role)}</span>` : ''}
+          ${state.me ? '<button class="btn btn-light" id="logoutBtn">Выйти</button>' : ''}
+        </div>
+      </header>
+      ${body}
+    </div>
+  `;
+}
+
+function bindCommonButtons() {
+  const logoutBtn = document.getElementById('logoutBtn');
+  if (logoutBtn) {
+    logoutBtn.onclick = async () => {
+      try {
+        await api('/api/logout', { method: 'POST' });
+      } catch {}
+      state.token = '';
+      state.me = null;
+      localStorage.removeItem('zanToken');
+      navigate('/login', true);
+    };
+  }
+
+  document.querySelectorAll('[data-nav]').forEach((el) => {
+    el.onclick = () => navigate(el.dataset.nav);
+  });
+}
+
+function renderErrorScreen(error) {
+  app.innerHTML = `
+    <div class="page center">
+      <div class="card">
+        <h2>Ошибка</h2>
+        <div class="notice danger">${escapeHtml(error?.message || 'Неизвестная ошибка')}</div>
+        <button class="btn" id="retryBtn">Повторить</button>
+      </div>
+    </div>
+  `;
+  const retryBtn = document.getElementById('retryBtn');
+  if (retryBtn) retryBtn.onclick = () => renderRoute().catch(renderErrorScreen);
+}
+
+async function ensureMe() {
+  if (!state.token) return null;
   const data = await api('/api/me');
   state.me = data.user;
   return state.me;
 }
 
-function statusText(status) {
-  if (status === 'locked') return 'Занята';
-  if (status === 'completed') return 'Завершена';
-  return 'Свободна';
+function imageSrc(item) {
+  return item.cachedImage || '';
 }
 
-function statusClass(status) {
-  if (status === 'locked') return 'status status-lock';
-  if (status === 'completed') return 'status status-ok';
-  return 'status status-free';
+function carryPrintHtml(payload) {
+  const dateText = new Date(payload.generatedAt || Date.now()).toLocaleString('ru-RU');
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Заявка на занос</title>
+  <style>body{font-family:Arial,sans-serif;margin:20px}table{width:100%;border-collapse:collapse;margin-bottom:14px}
+  th,td{border:1px solid #ddd;padding:8px}th:last-child,td:last-child{width:120px;text-align:center}.cat{font-weight:700;margin:12px 0 8px}</style>
+  </head><body><h1>Заявка на занос</h1><div>Дата и время: ${escapeHtml(dateText)}</div>
+  ${payload.categories.map((group) => `
+    <div class="cat">${escapeHtml(group.categoryName)}</div>
+    <table><thead><tr><th>Товар</th><th>Количество</th></tr></thead><tbody>
+      ${group.items.map((item) => `<tr><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.qty)}</td></tr>`).join('')}
+    </tbody></table>
+  `).join('')}
+  </body></html>`;
 }
 
-function imageProxy(url) {
-  if (!url) return '';
-  return `/api/image?token=${encodeURIComponent(state.token)}&url=${encodeURIComponent(url)}`;
+function pricePrintHtml(payload) {
+  const dateText = new Date(payload.generatedAt || Date.now()).toLocaleString('ru-RU');
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Проверка ценников</title>
+  <style>body{font-family:Arial,sans-serif;margin:20px}table{width:100%;border-collapse:collapse}
+  th,td{border:1px solid #ddd;padding:8px}</style></head><body>
+  <h1>Проверка ценников</h1><div>Дата и время: ${escapeHtml(dateText)}</div>
+  <table><thead><tr><th>Название</th><th>Артикул</th><th>Статус</th></tr></thead><tbody>
+    ${payload.items.map((item) => `<tr><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.vendorCode)}</td><td>${escapeHtml(item.status)}</td></tr>`).join('')}
+  </tbody></table></body></html>`;
 }
 
-function renderFatal(error) {
-  app.innerHTML = `
-    <div class="page page-center">
-      <div class="card">
-        <h1>Ошибка</h1>
-        <p>${escapeHtml(error?.message || 'Неизвестная ошибка')}</p>
-        <button id="retryBtn" class="btn">Повторить</button>
-      </div>
-    </div>
-  `;
-  const retry = document.getElementById('retryBtn');
-  if (retry) {
-    retry.onclick = () => renderRoute().catch((err) => renderFatal(err));
-  }
-}
-
-function renderTop(title, subtitle = '') {
-  return `
-    <div class="top card">
-      <div>
-        <div class="brand">ZAN 1.1</div>
-        <h1>${escapeHtml(title)}</h1>
-        ${subtitle ? `<div class="subtitle">${escapeHtml(subtitle)}</div>` : ''}
-      </div>
-      <div class="top-actions">
-        ${state.me ? `<span class="pill">${escapeHtml(state.me.login)} · ${escapeHtml(state.me.role)}</span>` : ''}
-        ${state.me ? '<button id="logoutBtn" class="btn btn-light">Выйти</button>' : ''}
-      </div>
-    </div>
-  `;
-}
-
-function bindLogoutButton() {
-  const logoutBtn = document.getElementById('logoutBtn');
-  if (!logoutBtn) return;
-  logoutBtn.onclick = async () => {
-    try {
-      await api('/api/logout', { method: 'POST' });
-    } catch {}
-    state.token = '';
-    state.me = null;
-    localStorage.removeItem('zanToken');
-    navigate('/login', true);
-  };
-}
-
-function attachNavHandlers() {
-  document.querySelectorAll('[data-nav]').forEach((element) => {
-    element.onclick = () => {
-      navigate(element.dataset.nav);
-    };
-  });
-}
-
-function openPrintWindow(html) {
+function openPrintHtml(html) {
   const printWindow = window.open('', '_blank');
   if (!printWindow) return;
   printWindow.document.open();
   printWindow.document.write(html);
   printWindow.document.close();
-  printWindow.focus();
-  setTimeout(() => {
-    printWindow.print();
-  }, 250);
+  setTimeout(() => printWindow.print(), 220);
 }
 
-function carryPrintHtml(data) {
-  const createdAt = new Date(data.generatedAt || Date.now()).toLocaleString('ru-RU');
-  return `<!doctype html>
-  <html lang="ru">
-    <head>
-      <meta charset="UTF-8" />
-      <title>Заявка на занос</title>
-      <style>
-        body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
-        h1 { margin: 0 0 6px; }
-        .meta { margin-bottom: 18px; color: #444; }
-        .cat { margin: 14px 0 8px; font-size: 18px; font-weight: bold; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th:last-child, td:last-child { width: 120px; text-align: center; }
-      </style>
-    </head>
-    <body>
-      <h1>Заявка на занос</h1>
-      <div class="meta">Дата и время: ${escapeHtml(createdAt)}</div>
-      ${data.categories.map((category) => `
-        <div class="cat">${escapeHtml(category.categoryName)}</div>
-        <table>
-          <thead><tr><th>Товар</th><th>Количество</th></tr></thead>
-          <tbody>
-            ${category.items.map((item) => `
-              <tr><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.qty)}</td></tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `).join('')}
-    </body>
-  </html>`;
+function registerInstallPromptHandlers() {
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    state.installPrompt = event;
+    const installBtn = document.getElementById('installBtn');
+    if (installBtn) installBtn.hidden = false;
+  });
 }
 
-function priceCheckPrintHtml(data) {
-  const createdAt = new Date(data.generatedAt || Date.now()).toLocaleString('ru-RU');
-  return `<!doctype html>
-  <html lang="ru">
-    <head>
-      <meta charset="UTF-8" />
-      <title>Отчёт проверки ценников</title>
-      <style>
-        body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
-        h1 { margin: 0 0 6px; }
-        .meta { margin-bottom: 18px; color: #444; }
-        .cat { margin: 14px 0 8px; font-size: 18px; font-weight: bold; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-      </style>
-    </head>
-    <body>
-      <h1>Проверка ценников</h1>
-      <div class="meta">Дата и время: ${escapeHtml(createdAt)}</div>
-      ${data.categories.map((category) => `
-        <div class="cat">${escapeHtml(category.categoryName)}</div>
-        <table>
-          <thead><tr><th>Товар</th><th>Статус</th></tr></thead>
-          <tbody>
-            ${category.items.map((item) => `
-              <tr>
-                <td>${escapeHtml(item.name)}</td>
-                <td>${escapeHtml(item.noStock ? 'Нет товара' : '')}${item.noStock && item.noPriceTag ? ', ' : ''}${escapeHtml(item.noPriceTag ? 'Нет ценника' : '')}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `).join('')}
-    </body>
-  </html>`;
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    await navigator.serviceWorker.register('/sw.js');
+  } catch {}
+}
+
+async function subscribePush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    throw new Error('Push не поддерживается');
+  }
+  const configData = await api('/api/push/config');
+  if (!configData.configured || !configData.publicKey) {
+    throw new Error('Push-сервер не настроен (нет VAPID ключей)');
+  }
+  const reg = await navigator.serviceWorker.ready;
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') throw new Error('Разрешение на уведомления не выдано');
+  const key = configData.publicKey.replace(/-/g, '+').replace(/_/g, '/');
+  const keyData = Uint8Array.from(atob(key), (ch) => ch.charCodeAt(0));
+  const subscription = await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: keyData,
+  });
+  await api('/api/push/subscribe', {
+    method: 'POST',
+    body: { subscription: subscription.toJSON() },
+  });
 }
 
 function renderLogin(error = '') {
   stopTimers();
   app.innerHTML = `
-    <div class="page page-center">
+    <div class="page center">
       <div class="card login-card">
         <div class="brand">ZAN 1.1</div>
         <h1>Вход</h1>
-        <label>Логин
-          <input id="loginInput" value="${escapeHtml(state.loginDraft)}" />
-        </label>
-        <label>Пароль
-          <input id="passwordInput" type="password" value="${escapeHtml(state.passwordDraft)}" />
-        </label>
-        <button id="loginBtn" class="btn btn-block">Войти</button>
-        ${error ? `<div class="error">${escapeHtml(error)}</div>` : ''}
+        <label>Логин <input id="loginInput" value="${escapeHtml(state.loginDraft)}" /></label>
+        <label>Пароль <input id="passwordInput" type="password" value="${escapeHtml(state.passwordDraft)}" /></label>
+        <button class="btn block" id="loginBtn">Войти</button>
+        ${error ? `<div class="notice danger">${escapeHtml(error)}</div>` : ''}
       </div>
     </div>
   `;
-
   const loginBtn = document.getElementById('loginBtn');
   loginBtn.onclick = async () => {
     state.loginDraft = document.getElementById('loginInput').value.trim();
     state.passwordDraft = document.getElementById('passwordInput').value.trim();
     try {
-      const data = await api('/api/login', {
+      const result = await api('/api/login', {
         method: 'POST',
         body: { login: state.loginDraft, password: state.passwordDraft },
       });
-      state.token = data.token;
+      state.token = result.token;
+      state.me = result.user;
       localStorage.setItem('zanToken', state.token);
-      await loadMe();
       navigate('/', true);
-    } catch (err) {
-      renderLogin(err.message);
+    } catch (errorLogin) {
+      renderLogin(errorLogin.message);
     }
   };
+}
+
+function weekDayName(index) {
+  return ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'][index] || '';
 }
 
 async function renderHome(note = '') {
-  const data = await api('/api/state');
-  const dashboard = data.state;
-  const sync = dashboard.sync || {};
-
-  const carryDone = dashboard.carryCategories.filter((item) => item.status === 'completed').length;
-  const priceDone = dashboard.priceCheckCategories.filter((item) => item.status === 'completed').length;
-
-  app.innerHTML = `
-    <div class="page">
-      ${renderTop('Главная', 'Стартовая панель модулей')}
-      <div class="grid cards-2">
-        <button class="card btn-tile" data-nav="/carry">
-          <div class="tile-title">Заявка на занос</div>
-          <div class="tile-sub">${carryDone} из ${dashboard.carryCategories.length} завершено</div>
-        </button>
-        <button class="card btn-tile" data-nav="/price-check">
-          <div class="tile-title">Проверка ценников</div>
-          <div class="tile-sub">${priceDone} из ${dashboard.priceCheckCategories.length} завершено</div>
-        </button>
-        <button class="card btn-tile" data-nav="/product-check">
-          <div class="tile-title">Проверка товара</div>
-          <div class="tile-sub">Нет штрих-кода</div>
-        </button>
-        ${state.me?.role === 'admin' ? `
-          <button class="card btn-tile" data-nav="/admin">
-            <div class="tile-title">Админка</div>
-            <div class="tile-sub">Сотрудники и блокировки</div>
-          </button>
-        ` : ''}
+  const stateData = await api('/api/state');
+  const sync = stateData.state.sync || {};
+  const calendar = stateData.state.calendar || { days: [] };
+  app.innerHTML = pageWrapper(
+    'Главная',
+    'Сервис сотрудников склада/магазина',
+    `
+      <div class="grid tiles">
+        <button class="tile" data-nav="/carry">Заявка на занос</button>
+        <button class="tile" data-nav="/price-check">Проверка ценников</button>
+        <button class="tile" data-nav="/product-check">Проверка товара</button>
+        <button class="tile" data-nav="/calendar">Календарь недели</button>
+        ${state.me?.role === 'admin' ? '<button class="tile" data-nav="/admin">Админка</button>' : ''}
       </div>
 
       <div class="card">
-        <div class="row row-between">
-          <h2>Синхронизация каталога</h2>
-          <span class="pill">${Number(sync.progress || 0)}%</span>
+        <div class="row between">
+          <h2>Каталог</h2>
+          <div class="pill">${Number(sync.progress || 0)}%</div>
         </div>
         <div class="subtitle">${escapeHtml(sync.message || 'Ожидание')}</div>
-        <div class="subtitle">
-          Последнее обновление: ${sync.lastFinishedAt ? new Date(sync.lastFinishedAt).toLocaleString('ru-RU') : '—'}
-        </div>
-        <div class="row">
-          <button id="syncBtn" class="btn" ${sync.running ? 'disabled' : ''}>Обновить каталог</button>
-          ${state.me?.role === 'admin' ? '<button id="syncResetBtn" class="btn btn-light">Сброс зависшего обновления</button>' : ''}
+        <div class="row wrap">
+          <button class="btn" id="syncBtn" ${sync.running ? 'disabled' : ''}>Обновить каталог</button>
+          ${state.me?.role === 'admin' ? '<button class="btn btn-light" id="syncResetBtn">Сбросить обновление</button>' : ''}
+          <button class="btn btn-light" id="installBtn" ${state.installPrompt ? '' : 'hidden'}>Установить на мобильный</button>
+          <button class="btn btn-light" id="pushSubscribeBtn">Включить push на устройстве</button>
         </div>
         ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
       </div>
-    </div>
-  `;
 
-  bindLogoutButton();
-  attachNavHandlers();
+      <div class="card">
+        <h2>Календарь недели</h2>
+        <div class="week-grid">
+          ${calendar.days.map((day, idx) => `
+            <div class="day-box">
+              <div class="day-title">${weekDayName(idx)} · ${escapeHtml(day.date.slice(5))}</div>
+              ${day.items.length === 0 ? '<div class="subtitle">—</div>' : ''}
+              ${day.items.map((item) => `<div class="day-item"><b>${escapeHtml(item.title)}</b><br>${escapeHtml(item.text || '')}</div>`).join('')}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `,
+  );
 
-  const syncBtn = document.getElementById('syncBtn');
-  if (syncBtn) {
-    syncBtn.onclick = async () => {
+  bindCommonButtons();
+
+  document.getElementById('syncBtn').onclick = async () => {
+    try {
+      const result = await api('/api/catalog/sync-yml', { method: 'POST' });
+      await renderHome(result.message || 'Синхронизация запущена');
+    } catch (errorSync) {
+      await renderHome(errorSync.message);
+    }
+  };
+
+  const resetBtn = document.getElementById('syncResetBtn');
+  if (resetBtn) {
+    resetBtn.onclick = async () => {
       try {
-        const result = await api('/api/sync-yml', { method: 'POST' });
-        await renderHome(result.message || 'Синхронизация запущена');
-      } catch (err) {
-        await renderHome(err.message);
+        const result = await api('/api/catalog/sync-reset', { method: 'POST' });
+        await renderHome(result.message || 'Сброс выполнен');
+      } catch (errorReset) {
+        await renderHome(errorReset.message);
       }
     };
   }
 
-  const syncResetBtn = document.getElementById('syncResetBtn');
-  if (syncResetBtn) {
-    syncResetBtn.onclick = async () => {
+  const installBtn = document.getElementById('installBtn');
+  if (installBtn) {
+    installBtn.onclick = async () => {
+      if (!state.installPrompt) return;
+      state.installPrompt.prompt();
+      await state.installPrompt.userChoice;
+      state.installPrompt = null;
+      installBtn.hidden = true;
+    };
+  }
+
+  const pushBtn = document.getElementById('pushSubscribeBtn');
+  if (pushBtn) {
+    pushBtn.onclick = async () => {
       try {
-        const result = await api('/api/sync-reset', { method: 'POST' });
-        await renderHome(result.message || 'Сброс выполнен');
-      } catch (err) {
-        await renderHome(err.message);
+        await subscribePush();
+        await renderHome('Push включён на устройстве');
+      } catch (errorPush) {
+        await renderHome(errorPush.message);
       }
     };
   }
 
   addTimer(setInterval(() => {
-    if (window.location.pathname === '/') {
-      renderHome().catch(() => {});
-    }
+    if (window.location.pathname === '/') renderHome().catch(() => {});
   }, 7000));
 }
 
-function categoryRow(category, modulePath) {
-  const action = category.status === 'completed'
-    ? '<span class="status status-ok">Завершена</span>'
-    : category.status === 'locked'
-      ? (category.isLockedByMe
-        ? `<button class="btn btn-light" data-open="${modulePath}/${category.categoryId}">Продолжить</button>`
-        : `<button class="btn btn-light" data-unlock="${category.categoryId}">Разблокировать</button>`)
-      : `<button class="btn" data-open="${modulePath}/${category.categoryId}">Открыть</button>`;
-  return `
-    <div class="list-item">
-      <div>
-        <div class="item-title">${escapeHtml(category.name)}</div>
-        <div class="${statusClass(category.status)}">${statusText(category.status)}</div>
-      </div>
-      ${action}
-    </div>
-  `;
-}
-
-async function renderCarryCategories(note = '') {
-  const [categoriesResult, stateResult] = await Promise.all([
-    api('/api/carry/categories'),
-    api('/api/state'),
-  ]);
-  const categories = categoriesResult.categories;
-  const canOpenPicking = Boolean(stateResult.state.canOpenPicking);
-
-  app.innerHTML = `
-    <div class="page">
-      ${renderTop('Заявка на занос', 'Категории модуля carry')}
+async function renderCarry(note = '') {
+  const result = await api('/api/carry/categories');
+  app.innerHTML = pageWrapper(
+    'Заявка на занос',
+    'Работа без блокировок — одновременно для всех сотрудников',
+    `
       <div class="card">
-        <div class="row row-between">
-          <h2>Категории</h2>
+        <div class="row between">
           <button class="btn btn-light" data-nav="/">На главную</button>
+          <button class="btn btn-green" data-nav="/carry/picking">Сборка заявки</button>
         </div>
-        <div class="list">${categories.map((item) => categoryRow(item, '/carry')).join('')}</div>
-        <div class="row">
-          <button id="openPickingBtn" class="btn ${canOpenPicking ? '' : 'btn-disabled'}" ${canOpenPicking ? '' : 'disabled'}>Сборка заявки</button>
-        </div>
-        ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
       </div>
-    </div>
-  `;
-
-  bindLogoutButton();
-  attachNavHandlers();
-
-  document.querySelectorAll('[data-open]').forEach((element) => {
-    element.onclick = async () => {
-      const path = element.dataset.open;
-      const categoryId = Number(path.split('/').at(-1));
-      try {
-        await api(`/api/carry/categories/${categoryId}/lock`, { method: 'POST' });
-        navigate(path);
-      } catch (err) {
-        await renderCarryCategories(err.message);
-      }
-    };
-  });
-
-  document.querySelectorAll('[data-unlock]').forEach((element) => {
-    element.onclick = async () => {
-      try {
-        await api(`/api/carry/categories/${element.dataset.unlock}/unlock`, { method: 'POST' });
-        await renderCarryCategories('Категория разблокирована');
-      } catch (err) {
-        await renderCarryCategories(err.message);
-      }
-    };
-  });
-
-  const openPickingBtn = document.getElementById('openPickingBtn');
-  if (openPickingBtn) {
-    openPickingBtn.onclick = () => navigate('/carry/picking');
-  }
-
-  addTimer(setInterval(() => {
-    if (window.location.pathname === '/carry') {
-      renderCarryCategories().catch(() => {});
-    }
-  }, 6000));
-}
-
-function productCard(product, mode = 'carry') {
-  const image = imageProxy(product.picture);
-  if (mode === 'carry') {
-    return `
-      <div class="product" data-inc="${product.id}">
-        <div class="image">
-          ${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(product.name)}" />` : '<div class="img-empty">Нет фото</div>'}
-          <button class="qty" ${product.qty > 0 ? `data-dec="${product.id}"` : 'disabled'}>${product.qty > 0 ? product.qty : '+'}</button>
-        </div>
-        <div class="product-name">${escapeHtml(product.name)}</div>
-      </div>
-    `;
-  }
-  return `
-    <div class="product ${product.noStock ? 'flag-stock' : ''} ${product.noPriceTag ? 'flag-tag' : ''}">
-      <div class="image">
-        ${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(product.name)}" />` : '<div class="img-empty">Нет фото</div>'}
-      </div>
-      <div class="product-name">${escapeHtml(product.name)}</div>
-      <div class="row wrap">
-        <button class="btn btn-small ${product.noStock ? 'btn-green' : 'btn-light'}" data-toggle-stock="${product.id}">Нет товара</button>
-        <button class="btn btn-small ${product.noPriceTag ? 'btn-yellow' : 'btn-light'}" data-toggle-tag="${product.id}">Нет ценника</button>
-      </div>
-    </div>
-  `;
-}
-
-async function renderCarryCategory(categoryId, options = {}) {
-  const { lockOnEnter = true, note = '' } = options;
-  if (lockOnEnter) {
-    await api(`/api/carry/categories/${categoryId}/lock`, { method: 'POST' });
-  }
-  const data = await api(`/api/carry/category/${categoryId}/products`);
-
-  app.innerHTML = `
-    <div class="page">
-      ${renderTop(data.category.name, 'Нажатие на карточку: +1, на круг: -1')}
       <div class="card">
-        <div class="row row-between">
-          <button class="btn btn-light" data-nav="/carry">Назад</button>
-          <div class="row">
-            <button id="unlockBtn" class="btn btn-light">Разблокировать категорию</button>
-            <button id="completeBtn" class="btn btn-green">Подтвердить заявку категории</button>
-          </div>
+        <div class="list">
+          ${result.categories.map((category) => `
+            <div class="list-item">
+              <div>
+                <div class="item-title">${escapeHtml(category.name)}</div>
+                <div class="subtitle">${category.confirmedAt ? `Подтверждена: ${new Date(category.confirmedAt).toLocaleString('ru-RU')}` : 'Не подтверждена'}</div>
+              </div>
+              <button class="btn" data-nav="/carry/${category.id}">Открыть</button>
+            </div>
+          `).join('')}
         </div>
         ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
       </div>
-      <div class="grid products-grid">
-        ${data.products.map((item) => productCard(item, 'carry')).join('')}
+    `,
+  );
+  bindCommonButtons();
+}
+
+function carryCard(item) {
+  const image = imageSrc(item);
+  return `
+    <div class="product-card" data-inc="${item.id}">
+      <div class="product-image">
+        ${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(item.name)}" loading="lazy" />` : '<div class="img-empty">Нет фото</div>'}
+        <button class="qty-circle" ${item.qty > 0 ? `data-dec="${item.id}"` : 'disabled'}>${item.qty > 0 ? item.qty : '+'}</button>
       </div>
+      <div class="product-name">${escapeHtml(item.name)}</div>
+      <div class="subtitle small">Арт. ${escapeHtml(item.vendorCode)}</div>
     </div>
   `;
+}
 
-  bindLogoutButton();
-  attachNavHandlers();
+async function renderCarryCategory(categoryId, note = '') {
+  const payload = await api(`/api/carry/category/${categoryId}/products`);
+  app.innerHTML = pageWrapper(
+    payload.category.name,
+    'Клик по карточке +1 (для 1/... шаг = 5), клик по кругу -1',
+    `
+      <div class="card">
+        <div class="row between">
+          <button class="btn btn-light" data-nav="/carry">Назад</button>
+          <button class="btn btn-green" id="confirmCarryBtn">Подтвердить заявку категории</button>
+        </div>
+        ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
+      </div>
+      <div class="grid products-grid">${payload.products.map(carryCard).join('')}</div>
+    `,
+  );
+  bindCommonButtons();
 
-  const completeBtn = document.getElementById('completeBtn');
-  completeBtn.onclick = async () => {
+  const confirmBtn = document.getElementById('confirmCarryBtn');
+  confirmBtn.onclick = async () => {
     try {
       await api(`/api/carry/categories/${categoryId}/complete`, { method: 'POST' });
       navigate('/carry');
-    } catch (err) {
-      await renderCarryCategory(categoryId, { lockOnEnter: false, note: err.message });
+    } catch (errorConfirm) {
+      await renderCarryCategory(categoryId, errorConfirm.message);
     }
   };
 
-  const unlockBtn = document.getElementById('unlockBtn');
-  unlockBtn.onclick = async () => {
-    try {
-      await api(`/api/carry/categories/${categoryId}/unlock`, { method: 'POST' });
-      navigate('/carry');
-    } catch (err) {
-      await renderCarryCategory(categoryId, { lockOnEnter: false, note: err.message });
-    }
-  };
-
-  document.querySelectorAll('[data-inc]').forEach((element) => {
-    element.onclick = async () => {
+  document.querySelectorAll('[data-inc]').forEach((el) => {
+    el.onclick = async () => {
       try {
-        await api(`/api/carry/items/${element.dataset.inc}/increment`, { method: 'POST' });
-        await renderCarryCategory(categoryId, { lockOnEnter: false });
-      } catch (err) {
-        await renderCarryCategory(categoryId, { lockOnEnter: false, note: err.message });
+        await api(`/api/carry/items/${el.dataset.inc}/increment`, { method: 'POST' });
+        await renderCarryCategory(categoryId);
+      } catch (errorInc) {
+        await renderCarryCategory(categoryId, errorInc.message);
       }
     };
   });
 
-  document.querySelectorAll('[data-dec]').forEach((element) => {
-    element.onclick = async (event) => {
+  document.querySelectorAll('[data-dec]').forEach((el) => {
+    el.onclick = async (event) => {
       event.stopPropagation();
       try {
-        await api(`/api/carry/items/${element.dataset.dec}/decrement`, { method: 'POST' });
-        await renderCarryCategory(categoryId, { lockOnEnter: false });
-      } catch (err) {
-        await renderCarryCategory(categoryId, { lockOnEnter: false, note: err.message });
+        await api(`/api/carry/items/${el.dataset.dec}/decrement`, { method: 'POST' });
+        await renderCarryCategory(categoryId);
+      } catch (errorDec) {
+        await renderCarryCategory(categoryId, errorDec.message);
       }
     };
   });
-
-  addTimer(setInterval(() => {
-    if (window.location.pathname === `/carry/${categoryId}`) {
-      api(`/api/carry/categories/${categoryId}/heartbeat`, { method: 'POST' }).catch(() => {});
-    }
-  }, 20000));
-
-  addTimer(setInterval(() => {
-    if (window.location.pathname === `/carry/${categoryId}`) {
-      renderCarryCategory(categoryId, { lockOnEnter: false }).catch(() => {});
-    }
-  }, 7000));
-}
-
-function pickingItemCard(item) {
-  const image = imageProxy(item.picture);
-  return `
-    <div class="list-item">
-      <div class="item-col">
-        <div class="item-title">${escapeHtml(item.name)}</div>
-        <div class="subtitle">Количество: ${item.qty}</div>
-      </div>
-      <div class="row">
-        <button class="btn ${item.picked ? 'btn-green' : 'btn-light'}" data-toggle-picked="${item.productId}">
-          ${item.picked ? 'Собран' : 'Отметить'}
-        </button>
-        ${image ? `<img class="thumb" src="${escapeHtml(image)}" alt="${escapeHtml(item.name)}" />` : ''}
-      </div>
-    </div>
-  `;
 }
 
 async function renderCarryPicking(note = '') {
-  const data = await api('/api/carry/picking');
-  app.innerHTML = `
-    <div class="page">
-      ${renderTop('Сборка заявки', `Собрано ${data.pickedItems} из ${data.totalItems}`)}
+  const payload = await api('/api/carry/picking');
+  app.innerHTML = pageWrapper(
+    'Сборка заявки',
+    `Собрано ${payload.pickedItems} из ${payload.totalItems}`,
+    `
       <div class="card">
-        <div class="row row-between">
+        <div class="row between wrap">
           <button class="btn btn-light" data-nav="/carry">Назад</button>
-          <div class="row">
-            <button id="printBtn" class="btn btn-light">Печать формы</button>
-            <button id="completeAllBtn" class="btn btn-green">Заявка собрана полностью</button>
+          <div class="row wrap">
+            <button class="btn btn-light" id="printCarryBtn">Печать формы</button>
+            <button class="btn btn-green" id="completeCarryOrderBtn">Заявка собрана полностью</button>
           </div>
         </div>
         ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
       </div>
-      ${data.categories.length === 0 ? '<div class="card">Нет товаров с количеством > 0</div>' : ''}
-      ${data.categories.map((category) => `
-        <div class="card">
-          <h2>${escapeHtml(category.categoryName)}</h2>
-          <div class="list">${category.items.map((item) => pickingItemCard(item)).join('')}</div>
-        </div>
-      `).join('')}
-    </div>
-  `;
 
-  bindLogoutButton();
-  attachNavHandlers();
-
-  document.querySelectorAll('[data-toggle-picked]').forEach((element) => {
-    element.onclick = async () => {
-      try {
-        await api(`/api/carry/items/${element.dataset.togglePicked}/toggle-picked`, { method: 'POST' });
-        await renderCarryPicking();
-      } catch (err) {
-        await renderCarryPicking(err.message);
-      }
-    };
-  });
-
-  const printBtn = document.getElementById('printBtn');
-  printBtn.onclick = async () => {
-    try {
-      const printable = await api('/api/carry/print');
-      openPrintWindow(carryPrintHtml(printable));
-    } catch (err) {
-      await renderCarryPicking(err.message);
-    }
-  };
-
-  const completeAllBtn = document.getElementById('completeAllBtn');
-  completeAllBtn.onclick = async () => {
-    try {
-      const result = await api('/api/carry/complete-all', { method: 'POST' });
-      navigate('/carry');
-      setTimeout(() => renderCarryCategories(result.message).catch(() => {}), 0);
-    } catch (err) {
-      await renderCarryPicking(err.message);
-    }
-  };
-
-  addTimer(setInterval(() => {
-    if (window.location.pathname === '/carry/picking') {
-      renderCarryPicking().catch(() => {});
-    }
-  }, 7000));
-}
-
-async function renderPriceCheckCategories(note = '') {
-  const categoriesResult = await api('/api/price-check/categories');
-  const categories = categoriesResult.categories;
-
-  app.innerHTML = `
-    <div class="page">
-      ${renderTop('Проверка ценников', 'Отдельные блокировки категорий')}
-      <div class="card">
-        <div class="row row-between">
-          <button class="btn btn-light" data-nav="/">На главную</button>
-          <button class="btn btn-light" data-nav="/price-check/report">Отчёт</button>
-        </div>
-        <div class="list">${categories.map((item) => categoryRow(item, '/price-check')).join('')}</div>
-        ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
-      </div>
-    </div>
-  `;
-
-  bindLogoutButton();
-  attachNavHandlers();
-
-  document.querySelectorAll('[data-open]').forEach((element) => {
-    element.onclick = async () => {
-      const path = element.dataset.open;
-      const categoryId = Number(path.split('/').at(-1));
-      try {
-        await api(`/api/price-check/categories/${categoryId}/lock`, { method: 'POST' });
-        navigate(path);
-      } catch (err) {
-        await renderPriceCheckCategories(err.message);
-      }
-    };
-  });
-
-  document.querySelectorAll('[data-unlock]').forEach((element) => {
-    element.onclick = async () => {
-      try {
-        await api(`/api/price-check/categories/${element.dataset.unlock}/unlock`, { method: 'POST' });
-        await renderPriceCheckCategories('Категория разблокирована');
-      } catch (err) {
-        await renderPriceCheckCategories(err.message);
-      }
-    };
-  });
-
-  addTimer(setInterval(() => {
-    if (window.location.pathname === '/price-check') {
-      renderPriceCheckCategories().catch(() => {});
-    }
-  }, 6000));
-}
-
-async function renderPriceCheckCategory(categoryId, options = {}) {
-  const { lockOnEnter = true, note = '' } = options;
-  if (lockOnEnter) {
-    await api(`/api/price-check/categories/${categoryId}/lock`, { method: 'POST' });
-  }
-  const data = await api(`/api/price-check/category/${categoryId}/products`);
-
-  app.innerHTML = `
-    <div class="page">
-      ${renderTop(data.category.name, 'Выберите: Нет товара / Нет ценника')}
-      <div class="card">
-        <div class="row row-between">
-          <button class="btn btn-light" data-nav="/price-check">Назад</button>
-          <div class="row">
-            <button id="unlockBtn" class="btn btn-light">Разблокировать категорию</button>
-            <button id="completeBtn" class="btn btn-green">Подтвердить проверку категории</button>
-          </div>
-        </div>
-        ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
-      </div>
-      <div class="grid products-grid">
-        ${data.products.map((item) => productCard(item, 'price')).join('')}
-      </div>
-    </div>
-  `;
-
-  bindLogoutButton();
-  attachNavHandlers();
-
-  const completeBtn = document.getElementById('completeBtn');
-  completeBtn.onclick = async () => {
-    try {
-      await api(`/api/price-check/categories/${categoryId}/complete`, { method: 'POST' });
-      navigate('/price-check');
-    } catch (err) {
-      await renderPriceCheckCategory(categoryId, { lockOnEnter: false, note: err.message });
-    }
-  };
-
-  const unlockBtn = document.getElementById('unlockBtn');
-  unlockBtn.onclick = async () => {
-    try {
-      await api(`/api/price-check/categories/${categoryId}/unlock`, { method: 'POST' });
-      navigate('/price-check');
-    } catch (err) {
-      await renderPriceCheckCategory(categoryId, { lockOnEnter: false, note: err.message });
-    }
-  };
-
-  document.querySelectorAll('[data-toggle-stock]').forEach((element) => {
-    element.onclick = async () => {
-      try {
-        await api(`/api/price-check/items/${element.dataset.toggleStock}/toggle-no-stock`, { method: 'POST' });
-        await renderPriceCheckCategory(categoryId, { lockOnEnter: false });
-      } catch (err) {
-        await renderPriceCheckCategory(categoryId, { lockOnEnter: false, note: err.message });
-      }
-    };
-  });
-
-  document.querySelectorAll('[data-toggle-tag]').forEach((element) => {
-    element.onclick = async () => {
-      try {
-        await api(`/api/price-check/items/${element.dataset.toggleTag}/toggle-no-price-tag`, { method: 'POST' });
-        await renderPriceCheckCategory(categoryId, { lockOnEnter: false });
-      } catch (err) {
-        await renderPriceCheckCategory(categoryId, { lockOnEnter: false, note: err.message });
-      }
-    };
-  });
-
-  addTimer(setInterval(() => {
-    if (window.location.pathname === `/price-check/${categoryId}`) {
-      api(`/api/price-check/categories/${categoryId}/heartbeat`, { method: 'POST' }).catch(() => {});
-    }
-  }, 20000));
-
-  addTimer(setInterval(() => {
-    if (window.location.pathname === `/price-check/${categoryId}`) {
-      renderPriceCheckCategory(categoryId, { lockOnEnter: false }).catch(() => {});
-    }
-  }, 7000));
-}
-
-async function renderPriceCheckReport(note = '') {
-  const data = await api('/api/price-check/report');
-  app.innerHTML = `
-    <div class="page">
-      ${renderTop('Отчёт проверки ценников')}
-      <div class="card">
-        <div class="row row-between">
-          <button class="btn btn-light" data-nav="/price-check">Назад</button>
-          <button id="printBtn" class="btn">Печать формы</button>
-        </div>
-        ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
-      </div>
-      ${data.categories.length === 0 ? '<div class="card">Нет отмеченных товаров</div>' : ''}
-      ${data.categories.map((category) => `
-        <div class="card">
-          <h2>${escapeHtml(category.categoryName)}</h2>
-          <div class="list">
-            ${category.items.map((item) => `
-              <div class="list-item">
-                <div>
-                  <div class="item-title">${escapeHtml(item.name)}</div>
-                  <div class="subtitle">${item.noStock ? 'Нет товара' : ''}${item.noStock && item.noPriceTag ? ', ' : ''}${item.noPriceTag ? 'Нет ценника' : ''}</div>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      `).join('')}
-    </div>
-  `;
-
-  bindLogoutButton();
-  attachNavHandlers();
-
-  const printBtn = document.getElementById('printBtn');
-  printBtn.onclick = async () => {
-    try {
-      const printable = await api('/api/price-check/print');
-      openPrintWindow(priceCheckPrintHtml(printable));
-    } catch (err) {
-      await renderPriceCheckReport(err.message);
-    }
-  };
-}
-
-async function renderProductCheck() {
-  const data = await api('/api/product-check/no-barcode');
-  const grouped = new Map();
-  for (const product of data.products) {
-    if (!grouped.has(product.categoryId)) {
-      grouped.set(product.categoryId, { categoryName: product.categoryName, items: [] });
-    }
-    grouped.get(product.categoryId).items.push(product);
-  }
-  const categories = Array.from(grouped.values());
-
-  app.innerHTML = `
-    <div class="page">
-      ${renderTop('Проверка товара', `Нет штрих-кода: ${data.products.length}`)}
-      <div class="card">
-        <div class="row row-between">
-          <button class="btn btn-light" data-nav="/">На главную</button>
-        </div>
-      </div>
-      ${categories.length === 0 ? '<div class="card">Все товары содержат штрих-код</div>' : ''}
-      ${categories.map((group) => `
+      ${payload.categories.length === 0 ? '<div class="card">Товаров с qty &gt; 0 нет</div>' : ''}
+      ${payload.categories.map((group) => `
         <div class="card">
           <h2>${escapeHtml(group.categoryName)}</h2>
           <div class="list">
@@ -829,35 +453,421 @@ async function renderProductCheck() {
               <div class="list-item">
                 <div>
                   <div class="item-title">${escapeHtml(item.name)}</div>
-                  <div class="subtitle">Арт. ${escapeHtml(item.vendorCode)}</div>
+                  <div class="subtitle">Арт. ${escapeHtml(item.vendorCode)} · Кол-во: ${item.qty}</div>
                 </div>
+                <button class="btn ${item.picked ? 'btn-green' : 'btn-light'}" data-toggle-picked="${item.productId}">
+                  ${item.picked ? 'Собран' : 'Отметить'}
+                </button>
               </div>
             `).join('')}
           </div>
         </div>
       `).join('')}
+    `,
+  );
+  bindCommonButtons();
+
+  document.querySelectorAll('[data-toggle-picked]').forEach((el) => {
+    el.onclick = async () => {
+      try {
+        await api(`/api/carry/items/${el.dataset.togglePicked}/toggle-picked`, { method: 'POST' });
+        await renderCarryPicking();
+      } catch (errorPicked) {
+        await renderCarryPicking(errorPicked.message);
+      }
+    };
+  });
+
+  document.getElementById('printCarryBtn').onclick = async () => {
+    try {
+      const printable = await api('/api/carry/print');
+      openPrintHtml(carryPrintHtml(printable));
+    } catch (errorPrint) {
+      await renderCarryPicking(errorPrint.message);
+    }
+  };
+
+  document.getElementById('completeCarryOrderBtn').onclick = async () => {
+    try {
+      const result = await api('/api/carry/complete-all', { method: 'POST' });
+      navigate('/carry');
+      setTimeout(() => renderCarry(result.message || 'Готово').catch(() => {}), 0);
+    } catch (errorComplete) {
+      await renderCarryPicking(errorComplete.message);
+    }
+  };
+
+  addTimer(setInterval(() => {
+    if (window.location.pathname === '/carry/picking') renderCarryPicking().catch(() => {});
+  }, 7000));
+}
+
+async function renderPriceCheckRoot(note = '') {
+  const result = await api('/api/price-check/categories');
+  app.innerHTML = pageWrapper(
+    'Проверка ценников',
+    'Товары разбиты на страницы по 50',
+    `
+      <div class="card">
+        <div class="row between">
+          <button class="btn btn-light" data-nav="/">На главную</button>
+          <button class="btn btn-light" data-nav="/price-check/report">Отчёт и печать</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="list">
+          ${result.categories.map((category) => `
+            <div class="list-item">
+              <div>
+                <div class="item-title">${escapeHtml(category.categoryName)}</div>
+                <div class="subtitle">Страниц: ${category.pagesCount}</div>
+              </div>
+              <button class="btn" data-nav="/price-check/${category.categoryId}">Страницы</button>
+            </div>
+          `).join('')}
+        </div>
+        ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
+      </div>
+    `,
+  );
+  bindCommonButtons();
+}
+
+async function renderPriceCheckPages(categoryId, note = '') {
+  const [cats, pagesData] = await Promise.all([
+    api('/api/price-check/categories'),
+    api(`/api/price-check/categories/${categoryId}/pages`),
+  ]);
+  const category = cats.categories.find((item) => Number(item.categoryId) === Number(categoryId));
+  const pages = pagesData.pages || [];
+  app.innerHTML = pageWrapper(
+    category ? category.categoryName : 'Страницы',
+    'Начальный экран: только страницы',
+    `
+      <div class="card">
+        <div class="row between">
+          <button class="btn btn-light" data-nav="/price-check">Назад</button>
+        </div>
+        ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
+      </div>
+      <div class="card">
+        <div class="pages-grid">
+          ${pages.map((page) => `
+            <button class="page-btn ${page.lockedBy && !page.isLockedByMe ? 'locked' : ''}" data-open-page="${page.pageNumber}">
+              <span>Страница ${page.pageNumber}</span>
+              <small>
+                ${page.lockedBy && !page.isLockedByMe
+                  ? `Занято: ${escapeHtml(page.lockedByLogin || 'сотрудник')}`
+                  : page.completedAt ? 'Проверена' : 'Свободна'}
+              </small>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    `,
+  );
+  bindCommonButtons();
+
+  document.querySelectorAll('[data-open-page]').forEach((el) => {
+    el.onclick = async () => {
+      const pageNumber = Number(el.dataset.openPage);
+      try {
+        await api(`/api/price-check/pages/${categoryId}/${pageNumber}/lock`, { method: 'POST' });
+        navigate(`/price-check/${categoryId}/${pageNumber}`);
+      } catch (errorOpen) {
+        await renderPriceCheckPages(categoryId, errorOpen.message);
+      }
+    };
+  });
+
+  addTimer(setInterval(() => {
+    if (window.location.pathname === `/price-check/${categoryId}`) renderPriceCheckPages(categoryId).catch(() => {});
+  }, 6000));
+}
+
+function priceCard(item) {
+  const image = imageSrc(item);
+  return `
+    <div class="product-card">
+      <div class="product-image">
+        ${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(item.name)}" loading="lazy" />` : '<div class="img-empty">Нет фото</div>'}
+      </div>
+      <div class="product-name">${escapeHtml(item.name)}</div>
+      <div class="subtitle small">Арт. ${escapeHtml(item.vendorCode)}</div>
+      <div class="row wrap">
+        <button class="btn btn-small ${item.problem ? 'btn-red' : 'btn-light'}" data-toggle-problem="${item.id}">Проблема</button>
+        <button class="btn btn-small ${item.price ? 'btn-yellow' : 'btn-light'}" data-toggle-price="${item.id}">Ценник</button>
+      </div>
     </div>
   `;
-  bindLogoutButton();
-  attachNavHandlers();
+}
+
+async function renderPriceCheckPage(categoryId, pageNumber, note = '') {
+  try {
+    await api(`/api/price-check/pages/${categoryId}/${pageNumber}/lock`, { method: 'POST' });
+  } catch (errorLock) {
+    await renderPriceCheckPages(categoryId, errorLock.message);
+    return;
+  }
+
+  const productsData = await api(`/api/price-check/pages/${categoryId}/${pageNumber}/products`);
+  app.innerHTML = pageWrapper(
+    `Страница ${pageNumber}`,
+    'Проблема / Ценник — переключатели',
+    `
+      <div class="card">
+        <div class="row between wrap">
+          <button class="btn btn-light" data-nav="/price-check/${categoryId}">Назад</button>
+          <div class="row wrap">
+            <button class="btn btn-light" id="unlockPageBtn">Разблокировать</button>
+            <button class="btn btn-green" id="completePageBtn">Подтвердить страницу</button>
+          </div>
+        </div>
+        ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
+      </div>
+      <div class="grid products-grid">${productsData.products.map(priceCard).join('')}</div>
+    `,
+  );
+  bindCommonButtons();
+
+  document.getElementById('unlockPageBtn').onclick = async () => {
+    try {
+      await api(`/api/price-check/pages/${categoryId}/${pageNumber}/unlock`, { method: 'POST' });
+      navigate(`/price-check/${categoryId}`);
+    } catch (errorUnlock) {
+      await renderPriceCheckPage(categoryId, pageNumber, errorUnlock.message);
+    }
+  };
+
+  document.getElementById('completePageBtn').onclick = async () => {
+    try {
+      await api(`/api/price-check/pages/${categoryId}/${pageNumber}/complete`, { method: 'POST' });
+      navigate(`/price-check/${categoryId}`);
+    } catch (errorComplete) {
+      await renderPriceCheckPage(categoryId, pageNumber, errorComplete.message);
+    }
+  };
+
+  document.querySelectorAll('[data-toggle-problem]').forEach((el) => {
+    el.onclick = async () => {
+      try {
+        await api(`/api/price-check/items/${el.dataset.toggleProblem}/toggle-problem`, { method: 'POST' });
+        await renderPriceCheckPage(categoryId, pageNumber);
+      } catch (errorProblem) {
+        await renderPriceCheckPage(categoryId, pageNumber, errorProblem.message);
+      }
+    };
+  });
+
+  document.querySelectorAll('[data-toggle-price]').forEach((el) => {
+    el.onclick = async () => {
+      try {
+        await api(`/api/price-check/items/${el.dataset.togglePrice}/toggle-price`, { method: 'POST' });
+        await renderPriceCheckPage(categoryId, pageNumber);
+      } catch (errorPrice) {
+        await renderPriceCheckPage(categoryId, pageNumber, errorPrice.message);
+      }
+    };
+  });
+
+  addTimer(setInterval(() => {
+    if (window.location.pathname === `/price-check/${categoryId}/${pageNumber}`) {
+      api(`/api/price-check/pages/${categoryId}/${pageNumber}/heartbeat`, { method: 'POST' }).catch(() => {});
+    }
+  }, 20000));
+}
+
+async function renderPriceCheckReport(note = '') {
+  const report = await api('/api/price-check/report');
+  app.innerHTML = pageWrapper(
+    'Отчёт проверки ценников',
+    'Печать без категорий: название / артикул / статус',
+    `
+      <div class="card">
+        <div class="row between">
+          <button class="btn btn-light" data-nav="/price-check">Назад</button>
+          <button class="btn" id="printPriceBtn">Печать формы</button>
+        </div>
+        ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
+      </div>
+      <div class="card">
+        ${report.items.length === 0 ? '<div class="subtitle">Отмеченных позиций нет</div>' : ''}
+        <div class="list">
+          ${report.items.map((item) => `
+            <div class="list-item">
+              <div>
+                <div class="item-title">${escapeHtml(item.name)}</div>
+                <div class="subtitle">Арт. ${escapeHtml(item.vendorCode)} · ${escapeHtml(item.status)}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `,
+  );
+  bindCommonButtons();
+
+  document.getElementById('printPriceBtn').onclick = async () => {
+    try {
+      const printable = await api('/api/price-check/print');
+      openPrintHtml(pricePrintHtml(printable));
+    } catch (errorPrint) {
+      await renderPriceCheckReport(errorPrint.message);
+    }
+  };
+}
+
+async function renderProductCheck(note = '') {
+  const payload = await api('/api/product-check/no-barcode');
+  app.innerHTML = pageWrapper(
+    'Проверка товара',
+    `Без штрих-кода: ${payload.products.length}`,
+    `
+      <div class="card">
+        <div class="row between"><button class="btn btn-light" data-nav="/">На главную</button></div>
+        ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
+      </div>
+      <div class="card">
+        ${payload.products.length === 0 ? '<div class="subtitle">Все товары содержат штрих-код</div>' : ''}
+        <div class="list">
+          ${payload.products.map((item) => `
+            <div class="list-item">
+              <div>
+                <div class="item-title">${escapeHtml(item.name)}</div>
+                <div class="subtitle">${escapeHtml(item.categoryName)} · Арт. ${escapeHtml(item.vendorCode)}</div>
+              </div>
+              <button class="btn btn-red" data-hide-product="${item.id}">−</button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `,
+  );
+  bindCommonButtons();
+
+  document.querySelectorAll('[data-hide-product]').forEach((el) => {
+    el.onclick = async () => {
+      try {
+        await api(`/api/product-check/items/${el.dataset.hideProduct}/hide`, { method: 'POST' });
+        await renderProductCheck('Товар скрыт из списка');
+      } catch (errorHide) {
+        await renderProductCheck(errorHide.message);
+      }
+    };
+  });
+}
+
+async function renderCalendar(note = '') {
+  const data = await api('/api/calendar/week');
+  app.innerHTML = pageWrapper(
+    'Календарь недели',
+    `${data.startDate} — ${data.endDate}`,
+    `
+      <div class="card">
+        <div class="row between"><button class="btn btn-light" data-nav="/">На главную</button></div>
+        ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
+      </div>
+      <div class="week-grid">
+        ${data.days.map((day, index) => `
+          <div class="card">
+            <h3>${weekDayName(index)} · ${escapeHtml(day.date)}</h3>
+            ${day.items.length === 0 ? '<div class="subtitle">Нет записей</div>' : ''}
+            ${day.items.map((item) => `
+              <div class="day-item">
+                <b>${escapeHtml(item.title)}</b>
+                <div>${escapeHtml(item.text || '')}</div>
+                ${state.me?.role === 'admin'
+                  ? `<div class="row wrap">
+                       <button class="btn btn-small btn-light" data-edit-cal="${item.id}" data-date="${item.date || day.date}" data-title="${escapeHtml(item.title)}" data-text="${escapeHtml(item.text || '')}">Изменить</button>
+                       <button class="btn btn-small btn-red" data-del-cal="${item.id}">Удалить</button>
+                     </div>`
+                  : ''}
+              </div>
+            `).join('')}
+          </div>
+        `).join('')}
+      </div>
+      ${state.me?.role === 'admin'
+        ? `<div class="card">
+             <h2>Добавить запись</h2>
+             <div class="row wrap">
+               <input class="input" id="calendarDate" type="date" value="${escapeHtml(data.startDate)}" />
+               <input class="input" id="calendarTitle" placeholder="Заголовок" />
+             </div>
+             <textarea class="input" id="calendarText" rows="3" placeholder="Текст"></textarea>
+             <button class="btn" id="calendarCreateBtn">Добавить</button>
+           </div>`
+        : ''}
+    `,
+  );
+  bindCommonButtons();
+
+  if (state.me?.role === 'admin') {
+    const createBtn = document.getElementById('calendarCreateBtn');
+    createBtn.onclick = async () => {
+      try {
+        await api('/api/calendar/items', {
+          method: 'POST',
+          body: {
+            date: document.getElementById('calendarDate').value,
+            title: document.getElementById('calendarTitle').value,
+            text: document.getElementById('calendarText').value,
+          },
+        });
+        await renderCalendar('Запись добавлена');
+      } catch (errorCreate) {
+        await renderCalendar(errorCreate.message);
+      }
+    };
+
+    document.querySelectorAll('[data-del-cal]').forEach((el) => {
+      el.onclick = async () => {
+        try {
+          await api(`/api/calendar/items/${el.dataset.delCal}`, { method: 'DELETE' });
+          await renderCalendar('Запись удалена');
+        } catch (errorDelete) {
+          await renderCalendar(errorDelete.message);
+        }
+      };
+    });
+
+    document.querySelectorAll('[data-edit-cal]').forEach((el) => {
+      el.onclick = async () => {
+        const title = prompt('Новый заголовок', el.dataset.title || '');
+        if (title === null) return;
+        const text = prompt('Новый текст', el.dataset.text || '');
+        if (text === null) return;
+        try {
+          await api(`/api/calendar/items/${el.dataset.editCal}`, {
+            method: 'PATCH',
+            body: { title, text },
+          });
+          await renderCalendar('Запись обновлена');
+        } catch (errorEdit) {
+          await renderCalendar(errorEdit.message);
+        }
+      };
+    });
+  }
 }
 
 function userRow(user) {
   return `
     <div class="list-item">
-      <div class="item-col grow">
-        <input class="input" id="login-${user.id}" value="${escapeHtml(user.login)}" />
-        <div class="row">
-          <select class="input" id="role-${user.id}">
+      <div class="grow">
+        <input class="input" id="user-login-${user.id}" value="${escapeHtml(user.login)}" />
+        <div class="row wrap">
+          <select class="input" id="user-role-${user.id}">
             <option value="staff" ${user.role === 'staff' ? 'selected' : ''}>staff</option>
             <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>admin</option>
           </select>
-          <input class="input" id="pass-${user.id}" placeholder="Новый пароль (опц.)" />
+          <input class="input" id="user-pass-${user.id}" placeholder="Новый пароль (опц.)" />
         </div>
+        <div class="subtitle">Последний вход: ${user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString('ru-RU') : '—'}</div>
       </div>
-      <div class="item-col">
-        <button class="btn btn-small" data-save-user="${user.id}">Сохранить</button>
-        <button class="btn btn-small ${user.isActive ? 'btn-light' : 'btn-green'}" data-toggle-user="${user.id}">
+      <div class="row wrap">
+        <button class="btn btn-small" data-user-save="${user.id}">Сохранить</button>
+        <button class="btn btn-small ${user.isActive ? 'btn-light' : 'btn-green'}" data-user-toggle="${user.id}">
           ${user.isActive ? 'Отключить' : 'Включить'}
         </button>
       </div>
@@ -870,165 +880,241 @@ async function renderAdmin(note = '') {
     navigate('/');
     return;
   }
-
-  const [usersData, locksData] = await Promise.all([
+  const [overview, users, sync, locks, rating, problemProducts] = await Promise.all([
+    api('/api/admin/overview'),
     api('/api/admin/users'),
-    api('/api/admin/locks'),
+    api('/api/catalog/sync-status'),
+    api('/api/admin/price-locks'),
+    api('/api/stats/monthly-rating'),
+    api('/api/admin/problem-products'),
   ]);
 
-  app.innerHTML = `
-    <div class="page">
-      ${renderTop('Админка', 'Сотрудники, блокировки и сервисные действия')}
+  app.innerHTML = pageWrapper(
+    'Админка',
+    'Обзор, сотрудники, каталог, блокировки, push, статистика',
+    `
       <div class="card">
-        <div class="row row-between">
+        <div class="row between">
           <button class="btn btn-light" data-nav="/">На главную</button>
-          <div class="row">
-            <button id="clearCacheBtn" class="btn btn-light">Очистка кэша картинок</button>
-            <button id="syncResetBtn" class="btn btn-light">Сброс синка</button>
+          <div class="row wrap">
+            <button class="btn btn-light" id="adminSyncBtn">Обновить каталог</button>
+            <button class="btn btn-light" id="adminResetSyncBtn">Сбросить обновление</button>
+            <button class="btn btn-light" id="adminClearCacheBtn">Очистка кэша</button>
           </div>
         </div>
         ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
       </div>
 
       <div class="card">
-        <h2>Добавить сотрудника</h2>
+        <h2>1. Обзор</h2>
+        <div class="subtitle">Онлайн: ${overview.overview.onlineUsers.map((u) => u.login).join(', ') || '—'}</div>
+        <div class="subtitle">Товаров: ${overview.overview.catalog.totalProducts}</div>
+        <div class="subtitle">Без штрих-кода: ${overview.overview.catalog.noBarcodeProducts}</div>
+        <div class="subtitle">Sync: ${escapeHtml(sync.sync.message || sync.sync.stage || 'idle')}</div>
+      </div>
+
+      <div class="card">
+        <h2>2. Сотрудники</h2>
         <div class="row wrap">
-          <input id="newLogin" class="input" placeholder="Логин" />
-          <input id="newPassword" class="input" placeholder="Пароль" />
-          <select id="newRole" class="input">
+          <input class="input" id="newUserLogin" placeholder="Логин" />
+          <input class="input" id="newUserPassword" placeholder="Пароль" />
+          <select class="input" id="newUserRole">
             <option value="staff">staff</option>
             <option value="admin">admin</option>
           </select>
-          <button id="createUserBtn" class="btn">Создать</button>
+          <button class="btn" id="createUserBtn">Добавить</button>
         </div>
+        <div class="list">${users.users.map(userRow).join('')}</div>
       </div>
 
       <div class="card">
-        <h2>Сотрудники</h2>
-        <div class="list">${usersData.users.map((user) => userRow(user)).join('')}</div>
-      </div>
-
-      <div class="card">
-        <h2>Зависшие блокировки</h2>
-        ${locksData.locks.length === 0 ? '<div class="subtitle">Нет активных блокировок</div>' : ''}
+        <h2>3-4. Блокировки price-check pages</h2>
+        ${locks.locks.length === 0 ? '<div class="subtitle">Нет блокировок</div>' : ''}
         <div class="list">
-          ${locksData.locks.map((lock) => `
+          ${locks.locks.map((lock) => `
             <div class="list-item">
               <div>
-                <div class="item-title">${escapeHtml(lock.module)} · ${escapeHtml(lock.categoryName)}</div>
-                <div class="subtitle">Сотрудник: ${escapeHtml(lock.lockedByLogin || '—')}</div>
+                <div class="item-title">${escapeHtml(lock.categoryName)} · Страница ${lock.pageNumber}</div>
+                <div class="subtitle">Занято: ${escapeHtml(lock.lockedByLogin)}</div>
               </div>
-              <button class="btn btn-light" data-unlock-module="${escapeHtml(lock.module)}" data-unlock-category="${lock.categoryId}">
-                Разблокировать
-              </button>
+              <button class="btn btn-light" data-unlock-lock="${lock.categoryId}:${lock.pageNumber}">Разблокировать</button>
             </div>
           `).join('')}
         </div>
       </div>
-    </div>
-  `;
 
-  bindLogoutButton();
-  attachNavHandlers();
+      <div class="card">
+        <h2>5. Push</h2>
+        <div class="row wrap">
+          <input class="input" id="pushTitle" placeholder="Заголовок" value="ZAN 1.1" />
+          <input class="input grow" id="pushText" placeholder="Текст уведомления" />
+        </div>
+        <div class="row wrap">
+          <button class="btn" id="pushAllBtn">Отправить всем</button>
+          <input class="input" id="pushUserId" placeholder="ID сотрудника" />
+          <button class="btn btn-light" id="pushOneBtn">Отправить одному</button>
+        </div>
+      </div>
 
-  const createUserBtn = document.getElementById('createUserBtn');
-  createUserBtn.onclick = async () => {
-    const login = document.getElementById('newLogin').value.trim();
-    const password = document.getElementById('newPassword').value.trim();
-    const role = document.getElementById('newRole').value;
+      <div class="card">
+        <h2>6. Статистика (рейтинг месяца)</h2>
+        <div class="list">
+          ${rating.items.map((item) => `
+            <div class="list-item">
+              <div class="item-title">#${item.rank} ${escapeHtml(item.login)}</div>
+              <div class="subtitle">score: ${item.workScore}, действий: ${item.actionsCount}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>7. Проблемные товары</h2>
+        ${problemProducts.products.length === 0 ? '<div class="subtitle">Нет проблемных товаров</div>' : ''}
+        <div class="list">
+          ${problemProducts.products.map((item) => `
+            <div class="list-item">
+              <div>
+                <div class="item-title">${escapeHtml(item.name)}</div>
+                <div class="subtitle">${escapeHtml(item.categoryName)} · Арт. ${escapeHtml(item.vendorCode)}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `,
+  );
+  bindCommonButtons();
+
+  document.getElementById('adminSyncBtn').onclick = async () => {
     try {
-      const result = await api('/api/admin/users', {
-        method: 'POST',
-        body: { login, password, role },
-      });
-      await renderAdmin(result.message || 'Пользователь создан');
-    } catch (err) {
-      await renderAdmin(err.message);
+      const result = await api('/api/catalog/sync-yml', { method: 'POST' });
+      await renderAdmin(result.message);
+    } catch (errorSync) {
+      await renderAdmin(errorSync.message);
     }
   };
-
-  document.querySelectorAll('[data-save-user]').forEach((element) => {
-    element.onclick = async () => {
-      const userId = Number(element.dataset.saveUser);
-      const login = document.getElementById(`login-${userId}`).value.trim();
-      const role = document.getElementById(`role-${userId}`).value;
-      const password = document.getElementById(`pass-${userId}`).value.trim();
-      try {
-        const body = { login, role };
-        if (password) body.password = password;
-        const result = await api(`/api/admin/users/${userId}`, {
-          method: 'PATCH',
-          body,
-        });
-        await renderAdmin(result.message || 'Пользователь обновлён');
-      } catch (err) {
-        await renderAdmin(err.message);
-      }
-    };
-  });
-
-  document.querySelectorAll('[data-toggle-user]').forEach((element) => {
-    element.onclick = async () => {
-      try {
-        const result = await api(`/api/admin/users/${element.dataset.toggleUser}/toggle-active`, {
-          method: 'POST',
-        });
-        await renderAdmin(result.message);
-      } catch (err) {
-        await renderAdmin(err.message);
-      }
-    };
-  });
-
-  document.querySelectorAll('[data-unlock-module]').forEach((element) => {
-    element.onclick = async () => {
-      try {
-        const result = await api('/api/admin/unlock-category', {
-          method: 'POST',
-          body: {
-            module: element.dataset.unlockModule,
-            categoryId: Number(element.dataset.unlockCategory),
-          },
-        });
-        await renderAdmin(result.message);
-      } catch (err) {
-        await renderAdmin(err.message);
-      }
-    };
-  });
-
-  const clearCacheBtn = document.getElementById('clearCacheBtn');
-  clearCacheBtn.onclick = async () => {
+  document.getElementById('adminResetSyncBtn').onclick = async () => {
+    try {
+      const result = await api('/api/admin/sync-reset', { method: 'POST' });
+      await renderAdmin(result.message);
+    } catch (errorReset) {
+      await renderAdmin(errorReset.message);
+    }
+  };
+  document.getElementById('adminClearCacheBtn').onclick = async () => {
     try {
       const result = await api('/api/admin/clear-image-cache', { method: 'POST' });
       await renderAdmin(result.message);
-    } catch (err) {
-      await renderAdmin(err.message);
+    } catch (errorCache) {
+      await renderAdmin(errorCache.message);
     }
   };
 
-  const syncResetBtn = document.getElementById('syncResetBtn');
-  syncResetBtn.onclick = async () => {
+  document.getElementById('createUserBtn').onclick = async () => {
     try {
-      const result = await api('/api/sync-reset', { method: 'POST' });
+      const result = await api('/api/admin/users', {
+        method: 'POST',
+        body: {
+          login: document.getElementById('newUserLogin').value.trim(),
+          password: document.getElementById('newUserPassword').value.trim(),
+          role: document.getElementById('newUserRole').value,
+        },
+      });
       await renderAdmin(result.message);
-    } catch (err) {
-      await renderAdmin(err.message);
+    } catch (errorUserCreate) {
+      await renderAdmin(errorUserCreate.message);
+    }
+  };
+
+  document.querySelectorAll('[data-user-save]').forEach((el) => {
+    el.onclick = async () => {
+      const id = Number(el.dataset.userSave);
+      try {
+        const payload = {
+          login: document.getElementById(`user-login-${id}`).value.trim(),
+          role: document.getElementById(`user-role-${id}`).value,
+        };
+        const password = document.getElementById(`user-pass-${id}`).value.trim();
+        if (password) payload.password = password;
+        const result = await api(`/api/admin/users/${id}`, { method: 'PATCH', body: payload });
+        await renderAdmin(result.message);
+      } catch (errorSave) {
+        await renderAdmin(errorSave.message);
+      }
+    };
+  });
+
+  document.querySelectorAll('[data-user-toggle]').forEach((el) => {
+    el.onclick = async () => {
+      try {
+        const result = await api(`/api/admin/users/${el.dataset.userToggle}/toggle-active`, { method: 'POST' });
+        await renderAdmin(result.message);
+      } catch (errorToggle) {
+        await renderAdmin(errorToggle.message);
+      }
+    };
+  });
+
+  document.querySelectorAll('[data-unlock-lock]').forEach((el) => {
+    el.onclick = async () => {
+      const [categoryId, pageNumber] = String(el.dataset.unlockLock).split(':').map(Number);
+      try {
+        const result = await api('/api/admin/unlock-price-page', {
+          method: 'POST',
+          body: { categoryId, pageNumber },
+        });
+        await renderAdmin(result.message);
+      } catch (errorUnlock) {
+        await renderAdmin(errorUnlock.message);
+      }
+    };
+  });
+
+  document.getElementById('pushAllBtn').onclick = async () => {
+    try {
+      const result = await api('/api/admin/push/send-all', {
+        method: 'POST',
+        body: {
+          title: document.getElementById('pushTitle').value.trim(),
+          text: document.getElementById('pushText').value.trim(),
+          url: '/',
+        },
+      });
+      await renderAdmin(result.message);
+    } catch (errorPushAll) {
+      await renderAdmin(errorPushAll.message);
+    }
+  };
+
+  document.getElementById('pushOneBtn').onclick = async () => {
+    const userId = document.getElementById('pushUserId').value.trim();
+    if (!userId) return renderAdmin('Укажите ID сотрудника');
+    try {
+      const result = await api(`/api/admin/push/send-user/${userId}`, {
+        method: 'POST',
+        body: {
+          title: document.getElementById('pushTitle').value.trim(),
+          text: document.getElementById('pushText').value.trim(),
+          url: '/',
+        },
+      });
+      await renderAdmin(result.message);
+    } catch (errorPushOne) {
+      await renderAdmin(errorPushOne.message);
     }
   };
 
   addTimer(setInterval(() => {
-    if (window.location.pathname === '/admin') {
-      renderAdmin().catch(() => {});
-    }
-  }, 8000));
+    if (window.location.pathname === '/admin') renderAdmin().catch(() => {});
+  }, 10000));
 }
 
 async function renderRoute() {
   stopTimers();
-  const pathname = window.location.pathname;
+  const path = window.location.pathname;
 
-  if (pathname === '/login') {
+  if (path === '/login') {
     renderLogin();
     return;
   }
@@ -1038,53 +1124,62 @@ async function renderRoute() {
     return;
   }
 
-  if (!state.me) {
-    try {
-      await loadMe();
-    } catch {
-      state.token = '';
-      state.me = null;
-      localStorage.removeItem('zanToken');
-      navigate('/login', true);
-      return;
-    }
+  try {
+    await ensureMe();
+  } catch {
+    state.token = '';
+    state.me = null;
+    localStorage.removeItem('zanToken');
+    navigate('/login', true);
+    return;
   }
 
-  if (pathname === '/') {
+  if (path === '/') {
     await renderHome();
     return;
   }
-  if (pathname === '/carry') {
-    await renderCarryCategories();
+  if (path === '/carry') {
+    await renderCarry();
     return;
   }
-  if (pathname === '/carry/picking') {
+  if (path === '/carry/picking') {
     await renderCarryPicking();
     return;
   }
-  if (/^\/carry\/\d+$/.test(pathname)) {
-    const categoryId = Number(pathname.split('/').at(-1));
+  if (/^\/carry\/\d+$/.test(path)) {
+    const categoryId = Number(path.split('/').at(-1));
     await renderCarryCategory(categoryId);
     return;
   }
-  if (pathname === '/price-check') {
-    await renderPriceCheckCategories();
+  if (path === '/price-check') {
+    await renderPriceCheckRoot();
     return;
   }
-  if (pathname === '/price-check/report') {
+  if (path === '/price-check/report') {
     await renderPriceCheckReport();
     return;
   }
-  if (/^\/price-check\/\d+$/.test(pathname)) {
-    const categoryId = Number(pathname.split('/').at(-1));
-    await renderPriceCheckCategory(categoryId);
+  if (/^\/price-check\/\d+$/.test(path)) {
+    const categoryId = Number(path.split('/').at(-1));
+    await renderPriceCheckPages(categoryId);
     return;
   }
-  if (pathname === '/product-check') {
+  if (/^\/price-check\/\d+\/\d+$/.test(path)) {
+    const parts = path.split('/');
+    const categoryId = Number(parts[2]);
+    const pageNumber = Number(parts[3]);
+    await renderPriceCheckPage(categoryId, pageNumber);
+    return;
+  }
+  if (path === '/product-check') {
     await renderProductCheck();
     return;
   }
-  if (pathname === '/admin') {
+  if (path === '/calendar') {
+    await renderCalendar();
+    return;
+  }
+  if (path === '/admin') {
     await renderAdmin();
     return;
   }
@@ -1093,9 +1188,10 @@ async function renderRoute() {
 }
 
 window.addEventListener('popstate', () => {
-  renderRoute().catch((error) => renderFatal(error));
+  renderRoute().catch(renderErrorScreen);
 });
-
 window.addEventListener('beforeunload', stopTimers);
 
-renderRoute().catch((error) => renderFatal(error));
+registerInstallPromptHandlers();
+registerServiceWorker();
+renderRoute().catch(renderErrorScreen);
