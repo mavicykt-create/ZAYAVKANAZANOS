@@ -1,19 +1,19 @@
 :root {
   --bg: #f2f4f8;
   --card: #ffffff;
-  --text: #111827;
-  --muted: #64748b;
-  --line: #d7e0ec;
+  --text: #141a24;
+  --muted: #69778c;
+  --line: #d9e0ea;
   --btn: #111827;
   --btn-text: #ffffff;
-  --green: #16a34a;
-  --red: #dc2626;
-  --yellow: #facc15;
+  --green: #1fb05d;
+  --red: #e74c3c;
+  --yellow: #ffd447;
   --yellow-text: #1f2937;
   --blue-soft: #e8f2ff;
   --danger-soft: #fee2e2;
-  --radius: 14px;
-  --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  --radius: 16px;
+  --shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
 }
 
 * {
@@ -33,7 +33,8 @@ body {
 }
 
 body {
-  touch-action: pan-y;
+  min-height: 100vh;
+  touch-action: manipulation;
 }
 
 button,
@@ -41,6 +42,10 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+button {
+  cursor: pointer;
 }
 
 img {
@@ -182,12 +187,31 @@ h3 {
   justify-content: space-between;
 }
 
+.row.between {
+  justify-content: space-between;
+}
+
+.row.end {
+  justify-content: flex-end;
+}
+
 .wrap {
   flex-wrap: wrap;
 }
 
 .grow {
   flex: 1;
+}
+
+.stack {
+  display: grid;
+  gap: 8px;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .btn {
@@ -198,7 +222,6 @@ h3 {
   font-weight: 700;
   min-height: 42px;
   padding: 10px 12px;
-  cursor: pointer;
 }
 
 .btn:disabled {

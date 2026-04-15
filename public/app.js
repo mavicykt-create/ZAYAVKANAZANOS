@@ -237,10 +237,9 @@ async function renderHome(note = '') {
   const stateData = await api('/api/state');
   const sync = stateData.state.sync || {};
   const calendar = stateData.state.calendar || { days: [] };
-  app.innerHTML = pageWrapper(
+    app.innerHTML = pageWrapper(
     'Главная',
     'Рабочая панель сотрудников склада/магазина',
-    `
       <div class="grid tiles">
         <button class="tile" data-nav="/carry">Заявка на занос</button>
         <button class="tile" data-nav="/price-check">Проверка ценников</button>
@@ -267,7 +266,7 @@ async function renderHome(note = '') {
       <div class="card">
         <h2>Календарь недели</h2>
         <div class="week-grid">
-          ${calendar.days.map((day, idx) => `
+          ${calendar.days.map((day, idx) => 
             <div class="day-box">
               <div class="day-title">${weekDayName(idx)} · ${escapeHtml(day.date.slice(5))}</div>
               ${day.items.length === 0 ? '<div class="subtitle">—</div>' : ''}
@@ -335,7 +334,6 @@ async function renderCarry(note = '') {
   app.innerHTML = pageWrapper(
     'Заявка на занос',
     'Работа без блокировок — все сотрудники могут работать одновременно',
-    `
       <div class="card">
         <div class="row between">
           <button class="btn btn-light" data-nav="/">На главную</button>
@@ -348,7 +346,7 @@ async function renderCarry(note = '') {
             <div class="list-item">
               <div>
                 <div class="item-title">${escapeHtml(category.name)}</div>
-                <div class="subtitle">${category.confirmedAt ? `Статус: завершена · ${new Date(category.confirmedAt).toLocaleString('ru-RU')}` : 'Статус: в работе'}</div>
+               div class="subtitle">${category.confirmedAt ? `Статус: завершена · ${new Date(category.confirmedAt).toLocaleString('ru-RU')}` : 'Статус: в работе'}</div>
               </div>
               <button class="btn" data-nav="/carry/${category.id}">Открыть категорию</button>
             </div>
@@ -380,10 +378,12 @@ async function renderCarryCategory(categoryId, note = '') {
   app.innerHTML = pageWrapper(
     payload.category.name,
     'Нажатие на карточку: +1 (или +5 для 1/...), на круг: -1 (или -5)',
-    `
+    'Нажатие на карточку: +1 (или +5 для 1/...), на круг: -1 (или -5)',
+    'Клик по карточке +1 (для 1/... шаг = 5), клик по кругу -1',
       <div class="card">
         <div class="row between">
           <button class="btn btn-light" data-nav="/carry">Назад</button>
+          <button class="btn btn-green" id="confirmCarryBtn">Подтвердить заявку категории</button>
         </div>
         ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
       </div>
@@ -391,7 +391,10 @@ async function renderCarryCategory(categoryId, note = '') {
       <div class="card footer-sticky">
         <button class="btn btn-green block" id="confirmCarryBtn">Подтвердить заявку категории</button>
       </div>
-    `,
+      <div class="card footer-sticky">
+        <button class="btn btn-green block" id="confirmCarryBtn">Подтвердить заявку категории</button>
+      </div>
+,
   );
   bindCommonButtons();
 
@@ -445,7 +448,6 @@ async function renderCarryPicking(note = '') {
         </div>
         ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
       </div>
-
       ${payload.categories.length === 0 ? '<div class="card">Нет товаров с количеством больше нуля</div>' : ''}
       ${payload.categories.map((group) => `
         <div class="card">
@@ -509,7 +511,6 @@ async function renderPriceCheckRoot(note = '') {
   app.innerHTML = pageWrapper(
     'Проверка ценников',
     'Товары разбиты на страницы по 50 (сортировка по алфавиту)',
-    `
       <div class="card">
         <div class="row between">
           <button class="btn btn-light" data-nav="/">На главную</button>
@@ -525,7 +526,7 @@ async function renderPriceCheckRoot(note = '') {
                 <div class="subtitle">Страниц: ${category.pagesCount}</div>
               </div>
               <button class="btn" data-nav="/price-check/${category.categoryId}">Открыть страницы</button>
-            </div>
+             </div>
           `).join('')}
         </div>
         ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
@@ -556,12 +557,12 @@ async function renderPriceCheckPages(categoryId, note = '') {
         <div class="pages-grid">
           ${pages.map((page) => `
             <button class="page-btn ${page.lockedBy && !page.isLockedByMe ? 'locked' : ''} ${page.completedAt ? 'done' : ''}" data-open-page="${page.pageNumber}">
-              <span>Страница ${page.pageNumber}</span>
+            <span>Страница ${page.pageNumber}</span>
               <small>
                 ${page.lockedBy && !page.isLockedByMe
                   ? `Занято: ${escapeHtml(page.lockedByLogin || 'сотрудник')}`
                   : page.completedAt ? 'Статус: проверена' : 'Статус: свободна'}
-              </small>
+                </small>
             </button>
           `).join('')}
         </div>
@@ -616,8 +617,7 @@ async function renderPriceCheckPage(categoryId, pageNumber, note = '') {
   app.innerHTML = pageWrapper(
     `Страница ${pageNumber}`,
     'Проблема (красная) / Ценник (жёлтая) — переключатели',
-    `
-      <div class="card">
+          <div class="card">
         <div class="row between wrap">
           <button class="btn btn-light" data-nav="/price-check/${categoryId}">Назад</button>
           <div class="row wrap">
@@ -693,7 +693,7 @@ async function renderPriceCheckReport(note = '') {
         ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
       </div>
       <div class="card">
-        ${report.items.length === 0 ? '<div class="subtitle">Нет отмеченных товаров</div>' : ''}
+         ${report.items.length === 0 ? '<div class="subtitle">Отмеченных позиций нет</div>' : ''}
         <div class="list">
           ${report.items.map((item) => `
             <div class="list-item">
@@ -738,7 +738,7 @@ async function renderProductCheck(note = '') {
                 <div class="item-title">${escapeHtml(item.name)}</div>
                 <div class="subtitle">${escapeHtml(item.categoryName)} · Арт. ${escapeHtml(item.vendorCode)}</div>
               </div>
-              <button class="btn btn-red" data-hide-product="${item.id}">Минус</button>
+              <button class="btn btn-red" data-hide-product="${item.id}">−</button>
             </div>
           `).join('')}
         </div>
