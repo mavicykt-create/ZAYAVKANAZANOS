@@ -1,0 +1,7 @@
+meta:
+  environment: nodejs
+
+run:
+  command: npm start
+  containerPort: 3000
+  persistenceMount: /data
