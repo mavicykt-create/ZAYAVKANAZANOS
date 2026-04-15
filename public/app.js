@@ -239,11 +239,7 @@ async function renderHome(note = '') {
   const calendar = stateData.state.calendar || { days: [] };
   app.innerHTML = pageWrapper(
     'Главная',
-<<<<<<< cursor/zan-1-1-structure-58a0
     'Рабочая панель сотрудников склада/магазина',
-=======
-    'Сервис сотрудников склада/магазина',
->>>>>>> main
     `
       <div class="grid tiles">
         <button class="tile" data-nav="/carry">Заявка на занос</button>
@@ -338,11 +334,7 @@ async function renderCarry(note = '') {
   const result = await api('/api/carry/categories');
   app.innerHTML = pageWrapper(
     'Заявка на занос',
-<<<<<<< cursor/zan-1-1-structure-58a0
     'Работа без блокировок — все сотрудники могут работать одновременно',
-=======
-    'Работа без блокировок — одновременно для всех сотрудников',
->>>>>>> main
     `
       <div class="card">
         <div class="row between">
@@ -356,15 +348,9 @@ async function renderCarry(note = '') {
             <div class="list-item">
               <div>
                 <div class="item-title">${escapeHtml(category.name)}</div>
-<<<<<<< cursor/zan-1-1-structure-58a0
                 <div class="subtitle">${category.confirmedAt ? `Статус: завершена · ${new Date(category.confirmedAt).toLocaleString('ru-RU')}` : 'Статус: в работе'}</div>
               </div>
               <button class="btn" data-nav="/carry/${category.id}">Открыть категорию</button>
-=======
-                <div class="subtitle">${category.confirmedAt ? `Подтверждена: ${new Date(category.confirmedAt).toLocaleString('ru-RU')}` : 'Не подтверждена'}</div>
-              </div>
-              <button class="btn" data-nav="/carry/${category.id}">Открыть</button>
->>>>>>> main
             </div>
           `).join('')}
         </div>
@@ -393,29 +379,18 @@ async function renderCarryCategory(categoryId, note = '') {
   const payload = await api(`/api/carry/category/${categoryId}/products`);
   app.innerHTML = pageWrapper(
     payload.category.name,
-<<<<<<< cursor/zan-1-1-structure-58a0
     'Нажатие на карточку: +1 (или +5 для 1/...), на круг: -1 (или -5)',
-=======
-    'Клик по карточке +1 (для 1/... шаг = 5), клик по кругу -1',
->>>>>>> main
     `
       <div class="card">
         <div class="row between">
           <button class="btn btn-light" data-nav="/carry">Назад</button>
-<<<<<<< cursor/zan-1-1-structure-58a0
-=======
-          <button class="btn btn-green" id="confirmCarryBtn">Подтвердить заявку категории</button>
->>>>>>> main
         </div>
         ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
       </div>
       <div class="grid products-grid">${payload.products.map(carryCard).join('')}</div>
-<<<<<<< cursor/zan-1-1-structure-58a0
       <div class="card footer-sticky">
         <button class="btn btn-green block" id="confirmCarryBtn">Подтвердить заявку категории</button>
       </div>
-=======
->>>>>>> main
     `,
   );
   bindCommonButtons();
@@ -471,11 +446,7 @@ async function renderCarryPicking(note = '') {
         ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
       </div>
 
-<<<<<<< cursor/zan-1-1-structure-58a0
       ${payload.categories.length === 0 ? '<div class="card">Нет товаров с количеством больше нуля</div>' : ''}
-=======
-      ${payload.categories.length === 0 ? '<div class="card">Товаров с qty &gt; 0 нет</div>' : ''}
->>>>>>> main
       ${payload.categories.map((group) => `
         <div class="card">
           <h2>${escapeHtml(group.categoryName)}</h2>
@@ -537,11 +508,7 @@ async function renderPriceCheckRoot(note = '') {
   const result = await api('/api/price-check/categories');
   app.innerHTML = pageWrapper(
     'Проверка ценников',
-<<<<<<< cursor/zan-1-1-structure-58a0
     'Товары разбиты на страницы по 50 (сортировка по алфавиту)',
-=======
-    'Товары разбиты на страницы по 50',
->>>>>>> main
     `
       <div class="card">
         <div class="row between">
@@ -557,11 +524,7 @@ async function renderPriceCheckRoot(note = '') {
                 <div class="item-title">${escapeHtml(category.categoryName)}</div>
                 <div class="subtitle">Страниц: ${category.pagesCount}</div>
               </div>
-<<<<<<< cursor/zan-1-1-structure-58a0
               <button class="btn" data-nav="/price-check/${category.categoryId}">Открыть страницы</button>
-=======
-              <button class="btn" data-nav="/price-check/${category.categoryId}">Страницы</button>
->>>>>>> main
             </div>
           `).join('')}
         </div>
@@ -592,20 +555,12 @@ async function renderPriceCheckPages(categoryId, note = '') {
       <div class="card">
         <div class="pages-grid">
           ${pages.map((page) => `
-<<<<<<< cursor/zan-1-1-structure-58a0
             <button class="page-btn ${page.lockedBy && !page.isLockedByMe ? 'locked' : ''} ${page.completedAt ? 'done' : ''}" data-open-page="${page.pageNumber}">
-=======
-            <button class="page-btn ${page.lockedBy && !page.isLockedByMe ? 'locked' : ''}" data-open-page="${page.pageNumber}">
->>>>>>> main
               <span>Страница ${page.pageNumber}</span>
               <small>
                 ${page.lockedBy && !page.isLockedByMe
                   ? `Занято: ${escapeHtml(page.lockedByLogin || 'сотрудник')}`
-<<<<<<< cursor/zan-1-1-structure-58a0
                   : page.completedAt ? 'Статус: проверена' : 'Статус: свободна'}
-=======
-                  : page.completedAt ? 'Проверена' : 'Свободна'}
->>>>>>> main
               </small>
             </button>
           `).join('')}
@@ -660,11 +615,7 @@ async function renderPriceCheckPage(categoryId, pageNumber, note = '') {
   const productsData = await api(`/api/price-check/pages/${categoryId}/${pageNumber}/products`);
   app.innerHTML = pageWrapper(
     `Страница ${pageNumber}`,
-<<<<<<< cursor/zan-1-1-structure-58a0
     'Проблема (красная) / Ценник (жёлтая) — переключатели',
-=======
-    'Проблема / Ценник — переключатели',
->>>>>>> main
     `
       <div class="card">
         <div class="row between wrap">
@@ -742,11 +693,7 @@ async function renderPriceCheckReport(note = '') {
         ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
       </div>
       <div class="card">
-<<<<<<< cursor/zan-1-1-structure-58a0
         ${report.items.length === 0 ? '<div class="subtitle">Нет отмеченных товаров</div>' : ''}
-=======
-        ${report.items.length === 0 ? '<div class="subtitle">Отмеченных позиций нет</div>' : ''}
->>>>>>> main
         <div class="list">
           ${report.items.map((item) => `
             <div class="list-item">
@@ -791,11 +738,7 @@ async function renderProductCheck(note = '') {
                 <div class="item-title">${escapeHtml(item.name)}</div>
                 <div class="subtitle">${escapeHtml(item.categoryName)} · Арт. ${escapeHtml(item.vendorCode)}</div>
               </div>
-<<<<<<< cursor/zan-1-1-structure-58a0
               <button class="btn btn-red" data-hide-product="${item.id}">Минус</button>
-=======
-              <button class="btn btn-red" data-hide-product="${item.id}">−</button>
->>>>>>> main
             </div>
           `).join('')}
         </div>
