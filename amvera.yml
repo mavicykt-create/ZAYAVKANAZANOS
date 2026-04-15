@@ -9,6 +9,6 @@ build:
   artifacts:
     "*": /
 run:
-  command: npm start
+  command: node server.js
   persistenceMount: /data
   containerPort: 3000
