@@ -1,17 +1,15 @@
 const state = {
-  token: localStorage.getItem('warehouseToken') || '',
-  appState: null,
-  currentCategoryId: null,
-  login: 'user',
-  password: '7895123',
-  pollTimer: null,
-  heartbeatTimer: null,
+  token: localStorage.getItem('zanToken') || '',
+  me: null,
+  timers: [],
+  loginDraft: 'admin',
+  passwordDraft: '123456',
 };
 
 const app = document.getElementById('app');
 
 function escapeHtml(value) {
-  return String(value || '')
+  return String(value ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
@@ -20,578 +18,1084 @@ function escapeHtml(value) {
 }
 
 function stopTimers() {
-  if (state.pollTimer) clearInterval(state.pollTimer);
-  if (state.heartbeatTimer) clearInterval(state.heartbeatTimer);
-  state.pollTimer = null;
-  state.heartbeatTimer = null;
-  window.onscroll = null;
+  for (const timer of state.timers) clearInterval(timer);
+  state.timers = [];
+}
+
+function addTimer(timerId) {
+  state.timers.push(timerId);
+}
+
+function navigate(path, replace = false) {
+  if (window.location.pathname === path) return;
+  if (replace) window.history.replaceState({}, '', path);
+  else window.history.pushState({}, '', path);
+  renderRoute().catch((error) => renderFatal(error));
+}
+
+function authHeaders(extra = {}) {
+  const headers = { ...extra };
+  if (state.token) headers.Authorization = `Bearer ${state.token}`;
+  return headers;
 }
 
 async function api(path, options = {}) {
-  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-  if (state.token) headers.Authorization = `Bearer ${state.token}`;
   const response = await fetch(path, {
     method: options.method || 'GET',
-    headers,
+    headers: authHeaders({
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    }),
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || data.ok === false) throw new Error(data.error || 'Ошибка запроса');
+  if (!response.ok || data.ok === false) {
+    const error = new Error(data.error || 'Ошибка запроса');
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 
-async function loadState() {
-  const data = await api('/api/state');
-  state.appState = data.state;
-  return state.appState;
+async function loadMe() {
+  const data = await api('/api/me');
+  state.me = data.user;
+  return state.me;
 }
 
-function compressedImageUrl(url) {
+function statusText(status) {
+  if (status === 'locked') return 'Занята';
+  if (status === 'completed') return 'Завершена';
+  return 'Свободна';
+}
+
+function statusClass(status) {
+  if (status === 'locked') return 'status status-lock';
+  if (status === 'completed') return 'status status-ok';
+  return 'status status-free';
+}
+
+function imageProxy(url) {
   if (!url) return '';
-  const token = encodeURIComponent(state.token || '');
-  return `/api/image?token=${token}&url=${encodeURIComponent(url)}`;
+  return `/api/image?token=${encodeURIComponent(state.token)}&url=${encodeURIComponent(url)}`;
 }
 
-function syncMeta() {
-  return state.appState?.sync || {
-    running: false,
-    progress: 0,
-    stage: '',
-    message: '',
-    lastStartedAt: null,
-    lastFinishedAt: null,
-    totalOffers: 0,
-    processedOffers: 0,
-    nextAllowedAt: 0,
-  };
+function renderFatal(error) {
+  app.innerHTML = `
+    <div class="page page-center">
+      <div class="card">
+        <h1>Ошибка</h1>
+        <p>${escapeHtml(error?.message || 'Неизвестная ошибка')}</p>
+        <button id="retryBtn" class="btn">Повторить</button>
+      </div>
+    </div>
+  `;
+  const retry = document.getElementById('retryBtn');
+  if (retry) {
+    retry.onclick = () => renderRoute().catch((err) => renderFatal(err));
+  }
 }
 
-function findCategory(categoryId) {
-  return state.appState?.categories?.find((item) => Number(item.id) === Number(categoryId));
+function renderTop(title, subtitle = '') {
+  return `
+    <div class="top card">
+      <div>
+        <div class="brand">ZAN 1.1</div>
+        <h1>${escapeHtml(title)}</h1>
+        ${subtitle ? `<div class="subtitle">${escapeHtml(subtitle)}</div>` : ''}
+      </div>
+      <div class="top-actions">
+        ${state.me ? `<span class="pill">${escapeHtml(state.me.login)} · ${escapeHtml(state.me.role)}</span>` : ''}
+        ${state.me ? '<button id="logoutBtn" class="btn btn-light">Выйти</button>' : ''}
+      </div>
+    </div>
+  `;
 }
 
-function categoryProducts(categoryId) {
-  return state.appState?.productsByCategory?.[categoryId] || state.appState?.productsByCategory?.[String(categoryId)] || [];
-}
-
-function formatDateTime(ts) {
-  if (!ts) return '—';
-  return new Date(Number(ts)).toLocaleString('ru-RU');
-}
-
-function formatTimeLeft(ms) {
-  const totalSec = Math.max(0, Math.ceil(ms / 1000));
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  if (h > 0) return `${h} ч ${m} мин`;
-  if (m > 0) return `${m} мин ${s} сек`;
-  return `${s} сек`;
-}
-
-function syncButtonState(sync) {
-  const running = Boolean(sync?.running);
-  const nextAllowedAt = Number(sync?.nextAllowedAt || 0);
-  const lockedUntil = nextAllowedAt > Date.now();
-  return {
-    running,
-    lockedUntil,
-    disabled: running || lockedUntil,
-    timeText: lockedUntil ? formatTimeLeft(nextAllowedAt - Date.now()) : '',
-  };
-}
-
-function startPolling(renderFn) {
-  state.pollTimer = setInterval(async () => {
+function bindLogoutButton() {
+  const logoutBtn = document.getElementById('logoutBtn');
+  if (!logoutBtn) return;
+  logoutBtn.onclick = async () => {
     try {
-      await loadState();
-      renderFn();
+      await api('/api/logout', { method: 'POST' });
     } catch {}
-  }, 5000);
+    state.token = '';
+    state.me = null;
+    localStorage.removeItem('zanToken');
+    navigate('/login', true);
+  };
+}
+
+function attachNavHandlers() {
+  document.querySelectorAll('[data-nav]').forEach((element) => {
+    element.onclick = () => {
+      navigate(element.dataset.nav);
+    };
+  });
+}
+
+function openPrintWindow(html) {
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) return;
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => {
+    printWindow.print();
+  }, 250);
+}
+
+function carryPrintHtml(data) {
+  const createdAt = new Date(data.generatedAt || Date.now()).toLocaleString('ru-RU');
+  return `<!doctype html>
+  <html lang="ru">
+    <head>
+      <meta charset="UTF-8" />
+      <title>Заявка на занос</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
+        h1 { margin: 0 0 6px; }
+        .meta { margin-bottom: 18px; color: #444; }
+        .cat { margin: 14px 0 8px; font-size: 18px; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th:last-child, td:last-child { width: 120px; text-align: center; }
+      </style>
+    </head>
+    <body>
+      <h1>Заявка на занос</h1>
+      <div class="meta">Дата и время: ${escapeHtml(createdAt)}</div>
+      ${data.categories.map((category) => `
+        <div class="cat">${escapeHtml(category.categoryName)}</div>
+        <table>
+          <thead><tr><th>Товар</th><th>Количество</th></tr></thead>
+          <tbody>
+            ${category.items.map((item) => `
+              <tr><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.qty)}</td></tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `).join('')}
+    </body>
+  </html>`;
+}
+
+function priceCheckPrintHtml(data) {
+  const createdAt = new Date(data.generatedAt || Date.now()).toLocaleString('ru-RU');
+  return `<!doctype html>
+  <html lang="ru">
+    <head>
+      <meta charset="UTF-8" />
+      <title>Отчёт проверки ценников</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
+        h1 { margin: 0 0 6px; }
+        .meta { margin-bottom: 18px; color: #444; }
+        .cat { margin: 14px 0 8px; font-size: 18px; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+      </style>
+    </head>
+    <body>
+      <h1>Проверка ценников</h1>
+      <div class="meta">Дата и время: ${escapeHtml(createdAt)}</div>
+      ${data.categories.map((category) => `
+        <div class="cat">${escapeHtml(category.categoryName)}</div>
+        <table>
+          <thead><tr><th>Товар</th><th>Статус</th></tr></thead>
+          <tbody>
+            ${category.items.map((item) => `
+              <tr>
+                <td>${escapeHtml(item.name)}</td>
+                <td>${escapeHtml(item.noStock ? 'Нет товара' : '')}${item.noStock && item.noPriceTag ? ', ' : ''}${escapeHtml(item.noPriceTag ? 'Нет ценника' : '')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `).join('')}
+    </body>
+  </html>`;
 }
 
 function renderLogin(error = '') {
   stopTimers();
   app.innerHTML = `
-    <div class="page login-wrap shell-bg">
-      <div class="login-card glass-card">
-        <div class="app-name">ZAN 1.0</div>
-        <h1 class="big-title app-heading">ZAN 1.0</h1>
-        <div class="muted" style="margin-bottom:14px;">Вход в сервис заказа на занос</div>
+    <div class="page page-center">
+      <div class="card login-card">
+        <div class="brand">ZAN 1.1</div>
+        <h1>Вход</h1>
         <label>Логин
-          <input id="loginInput" value="${escapeHtml(state.login)}" />
+          <input id="loginInput" value="${escapeHtml(state.loginDraft)}" />
         </label>
-        <label style="margin-top:12px;">Пароль
-          <input id="passwordInput" type="password" value="${escapeHtml(state.password)}" />
+        <label>Пароль
+          <input id="passwordInput" type="password" value="${escapeHtml(state.passwordDraft)}" />
         </label>
-        <button id="loginBtn" class="btn full primary-btn" style="margin-top:16px;">Войти</button>
+        <button id="loginBtn" class="btn btn-block">Войти</button>
         ${error ? `<div class="error">${escapeHtml(error)}</div>` : ''}
       </div>
     </div>
   `;
 
-  document.getElementById('loginBtn').onclick = async () => {
-    state.login = document.getElementById('loginInput').value.trim();
-    state.password = document.getElementById('passwordInput').value.trim();
+  const loginBtn = document.getElementById('loginBtn');
+  loginBtn.onclick = async () => {
+    state.loginDraft = document.getElementById('loginInput').value.trim();
+    state.passwordDraft = document.getElementById('passwordInput').value.trim();
     try {
-      const data = await api('/api/login', { method: 'POST', body: { login: state.login, password: state.password } });
+      const data = await api('/api/login', {
+        method: 'POST',
+        body: { login: state.loginDraft, password: state.passwordDraft },
+      });
       state.token = data.token;
-      localStorage.setItem('warehouseToken', state.token);
-      await loadState();
-      renderMenu('Вход выполнен');
-    } catch (error) {
-      renderLogin(error.message);
+      localStorage.setItem('zanToken', state.token);
+      await loadMe();
+      navigate('/', true);
+    } catch (err) {
+      renderLogin(err.message);
     }
   };
 }
 
-function renderSyncCard() {
-  const sync = syncMeta();
-  const syncBtn = syncButtonState(sync);
-  const lastText = sync.lastFinishedAt ? `Последнее обновление: ${formatDateTime(sync.lastFinishedAt)}` : 'Каталог ещё не обновлялся';
-  const nextText = syncBtn.lockedUntil ? `Следующее обновление через ${syncBtn.timeText}` : 'Обновление доступно';
-  const stageText = sync.message || (sync.running ? 'Каталог обновляется' : 'Ожидание');
+async function renderHome(note = '') {
+  const data = await api('/api/state');
+  const dashboard = data.state;
+  const sync = dashboard.sync || {};
 
+  const carryDone = dashboard.carryCategories.filter((item) => item.status === 'completed').length;
+  const priceDone = dashboard.priceCheckCategories.filter((item) => item.status === 'completed').length;
+
+  app.innerHTML = `
+    <div class="page">
+      ${renderTop('Главная', 'Стартовая панель модулей')}
+      <div class="grid cards-2">
+        <button class="card btn-tile" data-nav="/carry">
+          <div class="tile-title">Заявка на занос</div>
+          <div class="tile-sub">${carryDone} из ${dashboard.carryCategories.length} завершено</div>
+        </button>
+        <button class="card btn-tile" data-nav="/price-check">
+          <div class="tile-title">Проверка ценников</div>
+          <div class="tile-sub">${priceDone} из ${dashboard.priceCheckCategories.length} завершено</div>
+        </button>
+        <button class="card btn-tile" data-nav="/product-check">
+          <div class="tile-title">Проверка товара</div>
+          <div class="tile-sub">Нет штрих-кода</div>
+        </button>
+        ${state.me?.role === 'admin' ? `
+          <button class="card btn-tile" data-nav="/admin">
+            <div class="tile-title">Админка</div>
+            <div class="tile-sub">Сотрудники и блокировки</div>
+          </button>
+        ` : ''}
+      </div>
+
+      <div class="card">
+        <div class="row row-between">
+          <h2>Синхронизация каталога</h2>
+          <span class="pill">${Number(sync.progress || 0)}%</span>
+        </div>
+        <div class="subtitle">${escapeHtml(sync.message || 'Ожидание')}</div>
+        <div class="subtitle">
+          Последнее обновление: ${sync.lastFinishedAt ? new Date(sync.lastFinishedAt).toLocaleString('ru-RU') : '—'}
+        </div>
+        <div class="row">
+          <button id="syncBtn" class="btn" ${sync.running ? 'disabled' : ''}>Обновить каталог</button>
+          ${state.me?.role === 'admin' ? '<button id="syncResetBtn" class="btn btn-light">Сброс зависшего обновления</button>' : ''}
+        </div>
+        ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
+      </div>
+    </div>
+  `;
+
+  bindLogoutButton();
+  attachNavHandlers();
+
+  const syncBtn = document.getElementById('syncBtn');
+  if (syncBtn) {
+    syncBtn.onclick = async () => {
+      try {
+        const result = await api('/api/sync-yml', { method: 'POST' });
+        await renderHome(result.message || 'Синхронизация запущена');
+      } catch (err) {
+        await renderHome(err.message);
+      }
+    };
+  }
+
+  const syncResetBtn = document.getElementById('syncResetBtn');
+  if (syncResetBtn) {
+    syncResetBtn.onclick = async () => {
+      try {
+        const result = await api('/api/sync-reset', { method: 'POST' });
+        await renderHome(result.message || 'Сброс выполнен');
+      } catch (err) {
+        await renderHome(err.message);
+      }
+    };
+  }
+
+  addTimer(setInterval(() => {
+    if (window.location.pathname === '/') {
+      renderHome().catch(() => {});
+    }
+  }, 7000));
+}
+
+function categoryRow(category, modulePath) {
+  const action = category.status === 'completed'
+    ? '<span class="status status-ok">Завершена</span>'
+    : category.status === 'locked'
+      ? (category.isLockedByMe
+        ? `<button class="btn btn-light" data-open="${modulePath}/${category.categoryId}">Продолжить</button>`
+        : `<button class="btn btn-light" data-unlock="${category.categoryId}">Разблокировать</button>`)
+      : `<button class="btn" data-open="${modulePath}/${category.categoryId}">Открыть</button>`;
   return `
-    <div class="glass section-card sync-card">
-      <div class="row space-between sync-top-row" style="margin-bottom:12px;">
-        <div>
-          <div class="section-title">Обновление каталога</div>
-          <div class="small muted">${escapeHtml(lastText)}</div>
-          <div class="small muted">${escapeHtml(nextText)}</div>
+    <div class="list-item">
+      <div>
+        <div class="item-title">${escapeHtml(category.name)}</div>
+        <div class="${statusClass(category.status)}">${statusText(category.status)}</div>
+      </div>
+      ${action}
+    </div>
+  `;
+}
+
+async function renderCarryCategories(note = '') {
+  const [categoriesResult, stateResult] = await Promise.all([
+    api('/api/carry/categories'),
+    api('/api/state'),
+  ]);
+  const categories = categoriesResult.categories;
+  const canOpenPicking = Boolean(stateResult.state.canOpenPicking);
+
+  app.innerHTML = `
+    <div class="page">
+      ${renderTop('Заявка на занос', 'Категории модуля carry')}
+      <div class="card">
+        <div class="row row-between">
+          <h2>Категории</h2>
+          <button class="btn btn-light" data-nav="/">На главную</button>
         </div>
-        <div class="status-chip">${sync.running ? `${sync.progress || 0}%` : 'YML'}</div>
+        <div class="list">${categories.map((item) => categoryRow(item, '/carry')).join('')}</div>
+        <div class="row">
+          <button id="openPickingBtn" class="btn ${canOpenPicking ? '' : 'btn-disabled'}" ${canOpenPicking ? '' : 'disabled'}>Сборка заявки</button>
+        </div>
+        ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
       </div>
+    </div>
+  `;
 
-      <div class="progress-wrap">
-        <div class="progress-track"><div class="progress-bar" style="width:${Number(sync.progress || 0)}%"></div></div>
+  bindLogoutButton();
+  attachNavHandlers();
+
+  document.querySelectorAll('[data-open]').forEach((element) => {
+    element.onclick = async () => {
+      const path = element.dataset.open;
+      const categoryId = Number(path.split('/').at(-1));
+      try {
+        await api(`/api/carry/categories/${categoryId}/lock`, { method: 'POST' });
+        navigate(path);
+      } catch (err) {
+        await renderCarryCategories(err.message);
+      }
+    };
+  });
+
+  document.querySelectorAll('[data-unlock]').forEach((element) => {
+    element.onclick = async () => {
+      try {
+        await api(`/api/carry/categories/${element.dataset.unlock}/unlock`, { method: 'POST' });
+        await renderCarryCategories('Категория разблокирована');
+      } catch (err) {
+        await renderCarryCategories(err.message);
+      }
+    };
+  });
+
+  const openPickingBtn = document.getElementById('openPickingBtn');
+  if (openPickingBtn) {
+    openPickingBtn.onclick = () => navigate('/carry/picking');
+  }
+
+  addTimer(setInterval(() => {
+    if (window.location.pathname === '/carry') {
+      renderCarryCategories().catch(() => {});
+    }
+  }, 6000));
+}
+
+function productCard(product, mode = 'carry') {
+  const image = imageProxy(product.picture);
+  if (mode === 'carry') {
+    return `
+      <div class="product" data-inc="${product.id}">
+        <div class="image">
+          ${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(product.name)}" />` : '<div class="img-empty">Нет фото</div>'}
+          <button class="qty" ${product.qty > 0 ? `data-dec="${product.id}"` : 'disabled'}>${product.qty > 0 ? product.qty : '+'}</button>
+        </div>
+        <div class="product-name">${escapeHtml(product.name)}</div>
       </div>
-
-      <div class="small muted" style="margin-top:10px;">${escapeHtml(stageText)}</div>
-      ${sync.totalOffers ? `<div class="small muted" style="margin-top:4px;">Обработано ${sync.processedOffers || 0} из ${sync.totalOffers}</div>` : ''}
-
-      <div class="row" style="gap:10px; margin-top:12px; flex-wrap:wrap;">
-        <button id="syncBtn" class="btn primary-btn" ${syncBtn.disabled ? 'disabled' : ''}>${sync.running ? 'Каталог обновляется…' : 'Обновить каталог'}</button>
-        <button id="syncResetBtn" class="btn secondary">Сброс / перезагрузка каталога</button>
+    `;
+  }
+  return `
+    <div class="product ${product.noStock ? 'flag-stock' : ''} ${product.noPriceTag ? 'flag-tag' : ''}">
+      <div class="image">
+        ${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(product.name)}" />` : '<div class="img-empty">Нет фото</div>'}
+      </div>
+      <div class="product-name">${escapeHtml(product.name)}</div>
+      <div class="row wrap">
+        <button class="btn btn-small ${product.noStock ? 'btn-green' : 'btn-light'}" data-toggle-stock="${product.id}">Нет товара</button>
+        <button class="btn btn-small ${product.noPriceTag ? 'btn-yellow' : 'btn-light'}" data-toggle-tag="${product.id}">Нет ценника</button>
       </div>
     </div>
   `;
 }
 
-function renderMenu(message = '') {
-  stopTimers();
-  const categories = state.appState?.categories || [];
-  const doneCount = categories.filter((item) => item.status === 'completed').length;
-  const canOpenPicking = Boolean(state.appState?.canOpenPicking);
-  const sync = syncMeta();
+async function renderCarryCategory(categoryId, options = {}) {
+  const { lockOnEnter = true, note = '' } = options;
+  if (lockOnEnter) {
+    await api(`/api/carry/categories/${categoryId}/lock`, { method: 'POST' });
+  }
+  const data = await api(`/api/carry/category/${categoryId}/products`);
 
   app.innerHTML = `
-    <div class="page shell-bg">
-      <div class="hero glass compact-hero">
-        <div>
-          <div class="app-name">ZAN 1.0</div>
-          <h1 class="big-title app-heading">ZAN 1.0</h1>
-          <div class="muted">1 склад · 9 категорий</div>
-        </div>
-        <div class="status-chip strong-chip">${doneCount} / 9</div>
-      </div>
-
-      <div class="top-grid">
-        <button id="openRequestBtn" class="btn big primary-btn">Заявка на занос</button>
-        <button id="openPickingBtn" class="btn big ${canOpenPicking ? 'green' : 'secondary'}" ${canOpenPicking ? '' : 'disabled'}>Сборка заявки</button>
-      </div>
-
-      ${renderSyncCard()}
-
-      <div class="glass section-card">
-        <div class="row space-between" style="margin-bottom:10px; align-items:flex-start;">
-          <div>
-            <div class="section-title">Категории</div>
-            <div class="small muted">Обновление статуса каждые 5 секунд</div>
+    <div class="page">
+      ${renderTop(data.category.name, 'Нажатие на карточку: +1, на круг: -1')}
+      <div class="card">
+        <div class="row row-between">
+          <button class="btn btn-light" data-nav="/carry">Назад</button>
+          <div class="row">
+            <button id="unlockBtn" class="btn btn-light">Разблокировать категорию</button>
+            <button id="completeBtn" class="btn btn-green">Подтвердить заявку категории</button>
           </div>
-          ${sync.running ? `<div class="status-chip">${sync.progress || 0}%</div>` : ''}
         </div>
-
-        <div class="category-list">
-          ${categories.map((category) => {
-            const cls = category.status === 'completed' ? 'completed' : category.status === 'locked' ? 'locked' : '';
-            const statusText = category.status === 'completed'
-              ? 'Категория завершена'
-              : category.status === 'locked'
-              ? 'Сейчас категория занята'
-              : 'Готова к заполнению';
-            const action = category.status === 'completed'
-              ? '<span class="status-done">✓</span>'
-              : category.status === 'locked'
-                ? `<div class="row" style="gap:8px;"><span class="status-lock">🔒</span><button class="btn secondary compact" data-unlock-category="${category.id}">Разблокировать</button></div>`
-                : `<button class="btn compact" data-open-category="${category.id}">Открыть</button>`;
-            return `
-              <div class="category-item ${cls}">
-                <div>
-                  <div class="category-name">${escapeHtml(category.name)}</div>
-                  <div class="product-sub">${statusText}</div>
-                </div>
-                <div>${action}</div>
-              </div>
-            `;
-          }).join('')}
-        </div>
-
-        ${message ? `<div class="notice">${escapeHtml(message)}</div>` : ''}
+        ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
+      </div>
+      <div class="grid products-grid">
+        ${data.products.map((item) => productCard(item, 'carry')).join('')}
       </div>
     </div>
   `;
 
-  document.getElementById('openRequestBtn').onclick = () => renderMenu();
-  document.getElementById('openPickingBtn').onclick = () => {
-    if (state.appState?.canOpenPicking) renderPicking();
-  };
-  document.getElementById('syncBtn').onclick = async () => {
+  bindLogoutButton();
+  attachNavHandlers();
+
+  const completeBtn = document.getElementById('completeBtn');
+  completeBtn.onclick = async () => {
     try {
-      const data = await api('/api/sync-yml', { method: 'POST' });
-      state.appState = data.state;
-      renderMenu(data.message || 'Обновление каталога запущено');
-    } catch (error) {
-      renderMenu(error.message);
-    }
-  };
-  document.getElementById('syncResetBtn').onclick = async () => {
-    try {
-      const data = await api('/api/sync-reset', { method: 'POST' });
-      state.appState = data.state;
-      renderMenu(data.message || 'Сброс выполнен');
-    } catch (error) {
-      renderMenu(error.message);
+      await api(`/api/carry/categories/${categoryId}/complete`, { method: 'POST' });
+      navigate('/carry');
+    } catch (err) {
+      await renderCarryCategory(categoryId, { lockOnEnter: false, note: err.message });
     }
   };
 
-  document.querySelectorAll('[data-open-category]').forEach((btn) => {
-    btn.onclick = async () => {
-      const categoryId = Number(btn.dataset.openCategory);
+  const unlockBtn = document.getElementById('unlockBtn');
+  unlockBtn.onclick = async () => {
+    try {
+      await api(`/api/carry/categories/${categoryId}/unlock`, { method: 'POST' });
+      navigate('/carry');
+    } catch (err) {
+      await renderCarryCategory(categoryId, { lockOnEnter: false, note: err.message });
+    }
+  };
+
+  document.querySelectorAll('[data-inc]').forEach((element) => {
+    element.onclick = async () => {
       try {
-        const data = await api(`/api/categories/${categoryId}/lock`, { method: 'POST' });
-        state.appState = data.state;
-        state.currentCategoryId = categoryId;
-        renderCategory(categoryId);
-      } catch (error) {
-        renderMenu(error.message);
+        await api(`/api/carry/items/${element.dataset.inc}/increment`, { method: 'POST' });
+        await renderCarryCategory(categoryId, { lockOnEnter: false });
+      } catch (err) {
+        await renderCarryCategory(categoryId, { lockOnEnter: false, note: err.message });
       }
     };
   });
 
-  document.querySelectorAll('[data-unlock-category]').forEach((btn) => {
-    btn.onclick = async () => {
-      const categoryId = Number(btn.dataset.unlockCategory);
-      try {
-        const data = await api(`/api/categories/${categoryId}/unlock`, { method: 'POST' });
-        state.appState = data.state;
-        renderMenu(data.message || 'Категория разблокирована');
-      } catch (error) {
-        renderMenu(error.message);
-      }
-    };
-  });
-
-  startPolling(() => renderMenu());
-}
-
-function renderCategory(categoryId, message = '') {
-  stopTimers();
-  state.currentCategoryId = Number(categoryId);
-  const category = findCategory(categoryId);
-  const products = categoryProducts(categoryId);
-  if (!category) return renderMenu('Категория не найдена');
-
-  app.innerHTML = `
-    <div class="sticky-bar">
-      <div class="page">
-        <div class="row space-between mobile-topline">
-          <button id="backBtn" class="btn secondary compact">Назад</button>
-          <div style="text-align:right;">
-            <div class="section-title" style="margin:0;">${escapeHtml(category.name)}</div>
-            <div id="scrollText" class="small muted">До конца категории осталось 100%</div>
-          </div>
-        </div>
-        <div class="progress-wrap compact-progress">
-          <div class="progress-track"><div id="scrollBar" class="progress-bar"></div></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="page shell-bg">
-      <div class="glass section-card slim-pad">
-        <div class="row space-between" style="flex-wrap:wrap; gap:10px;">
-          <div class="small muted">Нажатие на товар добавляет количество. Нажатие на жёлтый круг уменьшает.</div>
-          <button id="unlockBtn" class="btn secondary compact">Разблокировать</button>
-        </div>
-        ${message ? `<div class="notice">${escapeHtml(message)}</div>` : ''}
-      </div>
-
-      <div class="products-grid mobile-grid">
-        ${products.map((product) => {
-          const ordered = Number(product.qty) > 0;
-          const src = compressedImageUrl(product.picture || '');
-          return `
-            <div class="product-card glass-card">
-              <div class="product-image-wrap" data-add-id="${product.id}">
-                ${src ? `<img loading="lazy" src="${escapeHtml(src)}" alt="${escapeHtml(product.name)}" onerror="this.style.display='none'; this.insertAdjacentHTML('afterend','<div class=&quot;image-placeholder&quot;>Нет фото</div>')" />` : '<div class="image-placeholder">Нет фото</div>'}
-                <button class="qty-badge ${ordered ? 'selected' : 'empty'}" ${ordered ? `data-sub-id="${product.id}"` : 'disabled'}>${ordered ? product.qty : '+'}</button>
-              </div>
-              <div class="product-body">
-                <div class="product-title">${escapeHtml(product.name)}</div>
-                <div class="product-sub">Арт. ${escapeHtml(product.vendor_code)}</div>
-              </div>
-            </div>
-          `;
-        }).join('')}
-      </div>
-
-      <div class="footer-bar glass row">
-        <button id="completeBtn" class="btn green compact full">Подтвердить заявку категории</button>
-      </div>
-    </div>
-  `;
-
-  document.getElementById('backBtn').onclick = () => renderMenu();
-  document.getElementById('unlockBtn').onclick = async () => {
-    try {
-      const data = await api(`/api/categories/${categoryId}/unlock`, { method: 'POST' });
-      state.appState = data.state;
-      renderMenu(data.message || 'Категория разблокирована');
-    } catch (error) {
-      renderCategory(categoryId, error.message);
-    }
-  };
-  document.getElementById('completeBtn').onclick = async () => {
-    try {
-      const data = await api(`/api/categories/${categoryId}/complete`, { method: 'POST' });
-      state.appState = data.state;
-      renderMenu('Категория подтверждена');
-    } catch (error) {
-      renderCategory(categoryId, error.message);
-    }
-  };
-
-  const updateQtyLocally = (productId, delta) => {
-    const product = products.find((item) => Number(item.id) === Number(productId));
-    if (!product) return;
-    product.qty = Math.max(0, Number(product.qty || 0) + delta);
-    const card = document.querySelector(`[data-add-id="${productId}"]`);
-    if (!card) return;
-    const badge = card.querySelector('.qty-badge');
-    if (!badge) return;
-    if (product.qty > 0) {
-      badge.className = 'qty-badge selected';
-      badge.textContent = product.qty;
-      badge.disabled = false;
-      badge.dataset.subId = productId;
-    } else {
-      badge.className = 'qty-badge empty';
-      badge.textContent = '+';
-      badge.disabled = true;
-      badge.removeAttribute('data-sub-id');
-    }
-  };
-
-  const handleIncrement = async (productId) => {
-    updateQtyLocally(productId, 1);
-    try {
-      const data = await api(`/api/items/${productId}/increment`, { method: 'POST' });
-      state.appState = data.state;
-    } catch (error) {
-      await loadState();
-      renderCategory(categoryId, error.message);
-    }
-  };
-
-  const handleDecrement = async (productId) => {
-    updateQtyLocally(productId, -1);
-    try {
-      const data = await api(`/api/items/${productId}/decrement`, { method: 'POST' });
-      state.appState = data.state;
-    } catch (error) {
-      await loadState();
-      renderCategory(categoryId, error.message);
-    }
-  };
-
-  document.querySelectorAll('[data-add-id]').forEach((el) => {
-    el.onclick = async () => handleIncrement(el.dataset.addId);
-  });
-  document.querySelectorAll('.qty-badge.selected').forEach((el) => {
-    el.onclick = async (event) => {
+  document.querySelectorAll('[data-dec]').forEach((element) => {
+    element.onclick = async (event) => {
       event.stopPropagation();
-      await handleDecrement(el.dataset.subId);
+      try {
+        await api(`/api/carry/items/${element.dataset.dec}/decrement`, { method: 'POST' });
+        await renderCarryCategory(categoryId, { lockOnEnter: false });
+      } catch (err) {
+        await renderCarryCategory(categoryId, { lockOnEnter: false, note: err.message });
+      }
     };
   });
 
-  state.heartbeatTimer = setInterval(() => {
-    api(`/api/categories/${categoryId}/heartbeat`, { method: 'POST' }).catch(() => {});
-  }, 20000);
+  addTimer(setInterval(() => {
+    if (window.location.pathname === `/carry/${categoryId}`) {
+      api(`/api/carry/categories/${categoryId}/heartbeat`, { method: 'POST' }).catch(() => {});
+    }
+  }, 20000));
 
-  state.pollTimer = setInterval(async () => {
-    try {
-      await loadState();
-      const fresh = findCategory(categoryId);
-      if (!fresh || (fresh.status !== 'locked' && fresh.status !== 'completed')) {
-        renderMenu('Статус категории изменился');
+  addTimer(setInterval(() => {
+    if (window.location.pathname === `/carry/${categoryId}`) {
+      renderCarryCategory(categoryId, { lockOnEnter: false }).catch(() => {});
+    }
+  }, 7000));
+}
+
+function pickingItemCard(item) {
+  const image = imageProxy(item.picture);
+  return `
+    <div class="list-item">
+      <div class="item-col">
+        <div class="item-title">${escapeHtml(item.name)}</div>
+        <div class="subtitle">Количество: ${item.qty}</div>
+      </div>
+      <div class="row">
+        <button class="btn ${item.picked ? 'btn-green' : 'btn-light'}" data-toggle-picked="${item.productId}">
+          ${item.picked ? 'Собран' : 'Отметить'}
+        </button>
+        ${image ? `<img class="thumb" src="${escapeHtml(image)}" alt="${escapeHtml(item.name)}" />` : ''}
+      </div>
+    </div>
+  `;
+}
+
+async function renderCarryPicking(note = '') {
+  const data = await api('/api/carry/picking');
+  app.innerHTML = `
+    <div class="page">
+      ${renderTop('Сборка заявки', `Собрано ${data.pickedItems} из ${data.totalItems}`)}
+      <div class="card">
+        <div class="row row-between">
+          <button class="btn btn-light" data-nav="/carry">Назад</button>
+          <div class="row">
+            <button id="printBtn" class="btn btn-light">Печать формы</button>
+            <button id="completeAllBtn" class="btn btn-green">Заявка собрана полностью</button>
+          </div>
+        </div>
+        ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
+      </div>
+      ${data.categories.length === 0 ? '<div class="card">Нет товаров с количеством > 0</div>' : ''}
+      ${data.categories.map((category) => `
+        <div class="card">
+          <h2>${escapeHtml(category.categoryName)}</h2>
+          <div class="list">${category.items.map((item) => pickingItemCard(item)).join('')}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  bindLogoutButton();
+  attachNavHandlers();
+
+  document.querySelectorAll('[data-toggle-picked]').forEach((element) => {
+    element.onclick = async () => {
+      try {
+        await api(`/api/carry/items/${element.dataset.togglePicked}/toggle-picked`, { method: 'POST' });
+        await renderCarryPicking();
+      } catch (err) {
+        await renderCarryPicking(err.message);
       }
-    } catch {}
-  }, 5000);
+    };
+  });
 
-  const syncProgress = () => {
-    const scrollTop = window.scrollY;
-    const documentHeight = document.documentElement.scrollHeight - window.innerHeight;
-    const percent = documentHeight <= 0 ? 0 : Math.min(100, Math.round((scrollTop / documentHeight) * 100));
-    const remaining = Math.max(0, 100 - percent);
-    const bar = document.getElementById('scrollBar');
-    const text = document.getElementById('scrollText');
-    if (bar) bar.style.width = `${percent}%`;
-    if (text) text.textContent = `До конца категории осталось ${remaining}%`;
+  const printBtn = document.getElementById('printBtn');
+  printBtn.onclick = async () => {
+    try {
+      const printable = await api('/api/carry/print');
+      openPrintWindow(carryPrintHtml(printable));
+    } catch (err) {
+      await renderCarryPicking(err.message);
+    }
   };
-  syncProgress();
-  window.onscroll = syncProgress;
+
+  const completeAllBtn = document.getElementById('completeAllBtn');
+  completeAllBtn.onclick = async () => {
+    try {
+      const result = await api('/api/carry/complete-all', { method: 'POST' });
+      navigate('/carry');
+      setTimeout(() => renderCarryCategories(result.message).catch(() => {}), 0);
+    } catch (err) {
+      await renderCarryPicking(err.message);
+    }
+  };
+
+  addTimer(setInterval(() => {
+    if (window.location.pathname === '/carry/picking') {
+      renderCarryPicking().catch(() => {});
+    }
+  }, 7000));
 }
 
-function buildPrintHtml(sections) {
-  const dateTime = new Date().toLocaleString('ru-RU');
-  return `<!doctype html><html lang="ru"><head><meta charset="UTF-8"><title>Печатная форма сборки</title><style>
-    body{font-family:Arial,sans-serif;margin:24px;color:#111} .title{font-size:22px;font-weight:700;margin-bottom:6px}
-    .meta{font-size:14px;color:#444;margin-bottom:18px} .print-category-name{font-size:18px;font-weight:700;margin:18px 0 8px}
-    table{width:100%;border-collapse:collapse;margin-bottom:12px} th,td{border:1px solid #cfcfcf;padding:8px 10px;text-align:left}
-    th:last-child,td:last-child{width:120px;text-align:center}
-  </style></head><body>
-    <div class="title">Печатная форма сборки</div>
-    <div class="meta">Дата и время: ${escapeHtml(dateTime)}</div>
-    ${sections.map((section) => `
-      <div class="print-category-name">${escapeHtml(section.category.name)}</div>
-      <table><thead><tr><th>Название товара</th><th>Количество</th></tr></thead><tbody>
-      ${section.products.map((product) => `<tr><td>${escapeHtml(product.name)}</td><td>${escapeHtml(product.qty)}</td></tr>`).join('')}
-      </tbody></table>
-    `).join('')}
-  </body></html>`;
-}
-
-function openPrintWindow(sections) {
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) return;
-  printWindow.document.open();
-  printWindow.document.write(buildPrintHtml(sections));
-  printWindow.document.close();
-  printWindow.focus();
-  setTimeout(() => printWindow.print(), 250);
-}
-
-function renderPicking(message = '') {
-  stopTimers();
-  const categories = state.appState?.categories || [];
-  const sections = categories.map((category) => ({
-    category,
-    products: categoryProducts(category.id).filter((item) => Number(item.qty) > 0)
-  })).filter((section) => section.products.length > 0);
-
-  const flat = sections.flatMap((section) => section.products);
-  const total = flat.length;
-  const done = flat.filter((item) => Number(item.picked) === 1).length;
-  const allPicked = total > 0 && done === total;
+async function renderPriceCheckCategories(note = '') {
+  const categoriesResult = await api('/api/price-check/categories');
+  const categories = categoriesResult.categories;
 
   app.innerHTML = `
-    <div class="page shell-bg">
-      <div class="hero glass compact-hero">
-        <button id="backBtn" class="btn secondary compact">Назад</button>
-        <div style="text-align:right;">
-          <div class="section-title">Сборка заявки</div>
-          <div class="muted">Собрано ${done} из ${total}</div>
+    <div class="page">
+      ${renderTop('Проверка ценников', 'Отдельные блокировки категорий')}
+      <div class="card">
+        <div class="row row-between">
+          <button class="btn btn-light" data-nav="/">На главную</button>
+          <button class="btn btn-light" data-nav="/price-check/report">Отчёт</button>
         </div>
+        <div class="list">${categories.map((item) => categoryRow(item, '/price-check')).join('')}</div>
+        ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
       </div>
+    </div>
+  `;
 
-      <div class="row" style="gap:10px; flex-wrap:wrap; margin:14px 0;">
-        <button id="printBtn" class="btn secondary compact">Печать формы</button>
-        <button id="completeAllBtn" class="btn green compact">Заявка собрана полностью</button>
+  bindLogoutButton();
+  attachNavHandlers();
+
+  document.querySelectorAll('[data-open]').forEach((element) => {
+    element.onclick = async () => {
+      const path = element.dataset.open;
+      const categoryId = Number(path.split('/').at(-1));
+      try {
+        await api(`/api/price-check/categories/${categoryId}/lock`, { method: 'POST' });
+        navigate(path);
+      } catch (err) {
+        await renderPriceCheckCategories(err.message);
+      }
+    };
+  });
+
+  document.querySelectorAll('[data-unlock]').forEach((element) => {
+    element.onclick = async () => {
+      try {
+        await api(`/api/price-check/categories/${element.dataset.unlock}/unlock`, { method: 'POST' });
+        await renderPriceCheckCategories('Категория разблокирована');
+      } catch (err) {
+        await renderPriceCheckCategories(err.message);
+      }
+    };
+  });
+
+  addTimer(setInterval(() => {
+    if (window.location.pathname === '/price-check') {
+      renderPriceCheckCategories().catch(() => {});
+    }
+  }, 6000));
+}
+
+async function renderPriceCheckCategory(categoryId, options = {}) {
+  const { lockOnEnter = true, note = '' } = options;
+  if (lockOnEnter) {
+    await api(`/api/price-check/categories/${categoryId}/lock`, { method: 'POST' });
+  }
+  const data = await api(`/api/price-check/category/${categoryId}/products`);
+
+  app.innerHTML = `
+    <div class="page">
+      ${renderTop(data.category.name, 'Выберите: Нет товара / Нет ценника')}
+      <div class="card">
+        <div class="row row-between">
+          <button class="btn btn-light" data-nav="/price-check">Назад</button>
+          <div class="row">
+            <button id="unlockBtn" class="btn btn-light">Разблокировать категорию</button>
+            <button id="completeBtn" class="btn btn-green">Подтвердить проверку категории</button>
+          </div>
+        </div>
+        ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
       </div>
+      <div class="grid products-grid">
+        ${data.products.map((item) => productCard(item, 'price')).join('')}
+      </div>
+    </div>
+  `;
 
-      ${message ? `<div class="notice">${escapeHtml(message)}</div>` : ''}
+  bindLogoutButton();
+  attachNavHandlers();
 
-      ${sections.map((section) => `
-        <div class="glass section-card" style="margin-top:16px;">
-          <div class="section-title">${escapeHtml(section.category.name)}</div>
-          <div class="products-grid mobile-grid">
-            ${section.products.map((product) => {
-              const src = compressedImageUrl(product.picture || '');
-              return `
-                <div class="product-card glass-card">
-                  <div class="product-image-wrap" data-pick-id="${product.id}">
-                    ${src ? `<img loading="lazy" src="${escapeHtml(src)}" alt="${escapeHtml(product.name)}" onerror="this.style.display='none'; this.insertAdjacentHTML('afterend','<div class=&quot;image-placeholder&quot;>Нет фото</div>')" />` : '<div class="image-placeholder">Нет фото</div>'}
-                    <div class="qty-badge selected">${product.qty}</div>
-                    ${Number(product.picked) === 1 ? '<div class="picked-mark">✓</div>' : ''}
-                  </div>
-                  <div class="product-body">
-                    <div class="product-title">${escapeHtml(product.name)}</div>
-                    <div class="product-sub">Арт. ${escapeHtml(product.vendor_code)}</div>
-                  </div>
-                </div>`;
-            }).join('')}
+  const completeBtn = document.getElementById('completeBtn');
+  completeBtn.onclick = async () => {
+    try {
+      await api(`/api/price-check/categories/${categoryId}/complete`, { method: 'POST' });
+      navigate('/price-check');
+    } catch (err) {
+      await renderPriceCheckCategory(categoryId, { lockOnEnter: false, note: err.message });
+    }
+  };
+
+  const unlockBtn = document.getElementById('unlockBtn');
+  unlockBtn.onclick = async () => {
+    try {
+      await api(`/api/price-check/categories/${categoryId}/unlock`, { method: 'POST' });
+      navigate('/price-check');
+    } catch (err) {
+      await renderPriceCheckCategory(categoryId, { lockOnEnter: false, note: err.message });
+    }
+  };
+
+  document.querySelectorAll('[data-toggle-stock]').forEach((element) => {
+    element.onclick = async () => {
+      try {
+        await api(`/api/price-check/items/${element.dataset.toggleStock}/toggle-no-stock`, { method: 'POST' });
+        await renderPriceCheckCategory(categoryId, { lockOnEnter: false });
+      } catch (err) {
+        await renderPriceCheckCategory(categoryId, { lockOnEnter: false, note: err.message });
+      }
+    };
+  });
+
+  document.querySelectorAll('[data-toggle-tag]').forEach((element) => {
+    element.onclick = async () => {
+      try {
+        await api(`/api/price-check/items/${element.dataset.toggleTag}/toggle-no-price-tag`, { method: 'POST' });
+        await renderPriceCheckCategory(categoryId, { lockOnEnter: false });
+      } catch (err) {
+        await renderPriceCheckCategory(categoryId, { lockOnEnter: false, note: err.message });
+      }
+    };
+  });
+
+  addTimer(setInterval(() => {
+    if (window.location.pathname === `/price-check/${categoryId}`) {
+      api(`/api/price-check/categories/${categoryId}/heartbeat`, { method: 'POST' }).catch(() => {});
+    }
+  }, 20000));
+
+  addTimer(setInterval(() => {
+    if (window.location.pathname === `/price-check/${categoryId}`) {
+      renderPriceCheckCategory(categoryId, { lockOnEnter: false }).catch(() => {});
+    }
+  }, 7000));
+}
+
+async function renderPriceCheckReport(note = '') {
+  const data = await api('/api/price-check/report');
+  app.innerHTML = `
+    <div class="page">
+      ${renderTop('Отчёт проверки ценников')}
+      <div class="card">
+        <div class="row row-between">
+          <button class="btn btn-light" data-nav="/price-check">Назад</button>
+          <button id="printBtn" class="btn">Печать формы</button>
+        </div>
+        ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
+      </div>
+      ${data.categories.length === 0 ? '<div class="card">Нет отмеченных товаров</div>' : ''}
+      ${data.categories.map((category) => `
+        <div class="card">
+          <h2>${escapeHtml(category.categoryName)}</h2>
+          <div class="list">
+            ${category.items.map((item) => `
+              <div class="list-item">
+                <div>
+                  <div class="item-title">${escapeHtml(item.name)}</div>
+                  <div class="subtitle">${item.noStock ? 'Нет товара' : ''}${item.noStock && item.noPriceTag ? ', ' : ''}${item.noPriceTag ? 'Нет ценника' : ''}</div>
+                </div>
+              </div>
+            `).join('')}
           </div>
         </div>
       `).join('')}
+    </div>
+  `;
 
-      <div class="footer-bar glass row end-row">
-        <button id="resetBtn" class="btn ${allPicked ? 'green' : 'secondary'}" ${allPicked ? '' : 'disabled'}>Заказ собран</button>
+  bindLogoutButton();
+  attachNavHandlers();
+
+  const printBtn = document.getElementById('printBtn');
+  printBtn.onclick = async () => {
+    try {
+      const printable = await api('/api/price-check/print');
+      openPrintWindow(priceCheckPrintHtml(printable));
+    } catch (err) {
+      await renderPriceCheckReport(err.message);
+    }
+  };
+}
+
+async function renderProductCheck() {
+  const data = await api('/api/product-check/no-barcode');
+  const grouped = new Map();
+  for (const product of data.products) {
+    if (!grouped.has(product.categoryId)) {
+      grouped.set(product.categoryId, { categoryName: product.categoryName, items: [] });
+    }
+    grouped.get(product.categoryId).items.push(product);
+  }
+  const categories = Array.from(grouped.values());
+
+  app.innerHTML = `
+    <div class="page">
+      ${renderTop('Проверка товара', `Нет штрих-кода: ${data.products.length}`)}
+      <div class="card">
+        <div class="row row-between">
+          <button class="btn btn-light" data-nav="/">На главную</button>
+        </div>
+      </div>
+      ${categories.length === 0 ? '<div class="card">Все товары содержат штрих-код</div>' : ''}
+      ${categories.map((group) => `
+        <div class="card">
+          <h2>${escapeHtml(group.categoryName)}</h2>
+          <div class="list">
+            ${group.items.map((item) => `
+              <div class="list-item">
+                <div>
+                  <div class="item-title">${escapeHtml(item.name)}</div>
+                  <div class="subtitle">Арт. ${escapeHtml(item.vendorCode)}</div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  bindLogoutButton();
+  attachNavHandlers();
+}
+
+function userRow(user) {
+  return `
+    <div class="list-item">
+      <div class="item-col grow">
+        <input class="input" id="login-${user.id}" value="${escapeHtml(user.login)}" />
+        <div class="row">
+          <select class="input" id="role-${user.id}">
+            <option value="staff" ${user.role === 'staff' ? 'selected' : ''}>staff</option>
+            <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>admin</option>
+          </select>
+          <input class="input" id="pass-${user.id}" placeholder="Новый пароль (опц.)" />
+        </div>
+      </div>
+      <div class="item-col">
+        <button class="btn btn-small" data-save-user="${user.id}">Сохранить</button>
+        <button class="btn btn-small ${user.isActive ? 'btn-light' : 'btn-green'}" data-toggle-user="${user.id}">
+          ${user.isActive ? 'Отключить' : 'Включить'}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+async function renderAdmin(note = '') {
+  if (state.me?.role !== 'admin') {
+    navigate('/');
+    return;
+  }
+
+  const [usersData, locksData] = await Promise.all([
+    api('/api/admin/users'),
+    api('/api/admin/locks'),
+  ]);
+
+  app.innerHTML = `
+    <div class="page">
+      ${renderTop('Админка', 'Сотрудники, блокировки и сервисные действия')}
+      <div class="card">
+        <div class="row row-between">
+          <button class="btn btn-light" data-nav="/">На главную</button>
+          <div class="row">
+            <button id="clearCacheBtn" class="btn btn-light">Очистка кэша картинок</button>
+            <button id="syncResetBtn" class="btn btn-light">Сброс синка</button>
+          </div>
+        </div>
+        ${note ? `<div class="notice">${escapeHtml(note)}</div>` : ''}
+      </div>
+
+      <div class="card">
+        <h2>Добавить сотрудника</h2>
+        <div class="row wrap">
+          <input id="newLogin" class="input" placeholder="Логин" />
+          <input id="newPassword" class="input" placeholder="Пароль" />
+          <select id="newRole" class="input">
+            <option value="staff">staff</option>
+            <option value="admin">admin</option>
+          </select>
+          <button id="createUserBtn" class="btn">Создать</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Сотрудники</h2>
+        <div class="list">${usersData.users.map((user) => userRow(user)).join('')}</div>
+      </div>
+
+      <div class="card">
+        <h2>Зависшие блокировки</h2>
+        ${locksData.locks.length === 0 ? '<div class="subtitle">Нет активных блокировок</div>' : ''}
+        <div class="list">
+          ${locksData.locks.map((lock) => `
+            <div class="list-item">
+              <div>
+                <div class="item-title">${escapeHtml(lock.module)} · ${escapeHtml(lock.categoryName)}</div>
+                <div class="subtitle">Сотрудник: ${escapeHtml(lock.lockedByLogin || '—')}</div>
+              </div>
+              <button class="btn btn-light" data-unlock-module="${escapeHtml(lock.module)}" data-unlock-category="${lock.categoryId}">
+                Разблокировать
+              </button>
+            </div>
+          `).join('')}
+        </div>
       </div>
     </div>
   `;
 
-  document.getElementById('backBtn').onclick = () => renderMenu();
-  document.getElementById('printBtn').onclick = () => openPrintWindow(sections);
-  document.getElementById('completeAllBtn').onclick = async () => {
+  bindLogoutButton();
+  attachNavHandlers();
+
+  const createUserBtn = document.getElementById('createUserBtn');
+  createUserBtn.onclick = async () => {
+    const login = document.getElementById('newLogin').value.trim();
+    const password = document.getElementById('newPassword').value.trim();
+    const role = document.getElementById('newRole').value;
     try {
-      const data = await api('/api/order/complete-all', { method: 'POST' });
-      state.appState = data.state;
-      renderMenu(data.message || 'Заявка полностью собрана');
-    } catch (error) {
-      renderPicking(error.message);
+      const result = await api('/api/admin/users', {
+        method: 'POST',
+        body: { login, password, role },
+      });
+      await renderAdmin(result.message || 'Пользователь создан');
+    } catch (err) {
+      await renderAdmin(err.message);
     }
   };
-  document.querySelectorAll('[data-pick-id]').forEach((el) => {
-    el.onclick = async () => {
+
+  document.querySelectorAll('[data-save-user]').forEach((element) => {
+    element.onclick = async () => {
+      const userId = Number(element.dataset.saveUser);
+      const login = document.getElementById(`login-${userId}`).value.trim();
+      const role = document.getElementById(`role-${userId}`).value;
+      const password = document.getElementById(`pass-${userId}`).value.trim();
       try {
-        const data = await api(`/api/items/${el.dataset.pickId}/toggle-picked`, { method: 'POST' });
-        state.appState = data.state;
-        renderPicking();
-      } catch (error) {
-        renderPicking(error.message);
+        const body = { login, role };
+        if (password) body.password = password;
+        const result = await api(`/api/admin/users/${userId}`, {
+          method: 'PATCH',
+          body,
+        });
+        await renderAdmin(result.message || 'Пользователь обновлён');
+      } catch (err) {
+        await renderAdmin(err.message);
       }
     };
   });
-  document.getElementById('resetBtn').onclick = async () => {
+
+  document.querySelectorAll('[data-toggle-user]').forEach((element) => {
+    element.onclick = async () => {
+      try {
+        const result = await api(`/api/admin/users/${element.dataset.toggleUser}/toggle-active`, {
+          method: 'POST',
+        });
+        await renderAdmin(result.message);
+      } catch (err) {
+        await renderAdmin(err.message);
+      }
+    };
+  });
+
+  document.querySelectorAll('[data-unlock-module]').forEach((element) => {
+    element.onclick = async () => {
+      try {
+        const result = await api('/api/admin/unlock-category', {
+          method: 'POST',
+          body: {
+            module: element.dataset.unlockModule,
+            categoryId: Number(element.dataset.unlockCategory),
+          },
+        });
+        await renderAdmin(result.message);
+      } catch (err) {
+        await renderAdmin(err.message);
+      }
+    };
+  });
+
+  const clearCacheBtn = document.getElementById('clearCacheBtn');
+  clearCacheBtn.onclick = async () => {
     try {
-      const data = await api('/api/order/reset', { method: 'POST' });
-      state.appState = data.state;
-      renderMenu('Заказ завершён и полностью очищен');
-    } catch (error) {
-      renderPicking(error.message);
+      const result = await api('/api/admin/clear-image-cache', { method: 'POST' });
+      await renderAdmin(result.message);
+    } catch (err) {
+      await renderAdmin(err.message);
     }
   };
 
-  startPolling(() => renderPicking());
+  const syncResetBtn = document.getElementById('syncResetBtn');
+  syncResetBtn.onclick = async () => {
+    try {
+      const result = await api('/api/sync-reset', { method: 'POST' });
+      await renderAdmin(result.message);
+    } catch (err) {
+      await renderAdmin(err.message);
+    }
+  };
+
+  addTimer(setInterval(() => {
+    if (window.location.pathname === '/admin') {
+      renderAdmin().catch(() => {});
+    }
+  }, 8000));
 }
 
-async function boot() {
-  if (!state.token) return renderLogin();
-  try {
-    await loadState();
-    renderMenu();
-  } catch {
-    localStorage.removeItem('warehouseToken');
-    state.token = '';
+async function renderRoute() {
+  stopTimers();
+  const pathname = window.location.pathname;
+
+  if (pathname === '/login') {
     renderLogin();
+    return;
   }
+
+  if (!state.token) {
+    navigate('/login', true);
+    return;
+  }
+
+  if (!state.me) {
+    try {
+      await loadMe();
+    } catch {
+      state.token = '';
+      state.me = null;
+      localStorage.removeItem('zanToken');
+      navigate('/login', true);
+      return;
+    }
+  }
+
+  if (pathname === '/') {
+    await renderHome();
+    return;
+  }
+  if (pathname === '/carry') {
+    await renderCarryCategories();
+    return;
+  }
+  if (pathname === '/carry/picking') {
+    await renderCarryPicking();
+    return;
+  }
+  if (/^\/carry\/\d+$/.test(pathname)) {
+    const categoryId = Number(pathname.split('/').at(-1));
+    await renderCarryCategory(categoryId);
+    return;
+  }
+  if (pathname === '/price-check') {
+    await renderPriceCheckCategories();
+    return;
+  }
+  if (pathname === '/price-check/report') {
+    await renderPriceCheckReport();
+    return;
+  }
+  if (/^\/price-check\/\d+$/.test(pathname)) {
+    const categoryId = Number(pathname.split('/').at(-1));
+    await renderPriceCheckCategory(categoryId);
+    return;
+  }
+  if (pathname === '/product-check') {
+    await renderProductCheck();
+    return;
+  }
+  if (pathname === '/admin') {
+    await renderAdmin();
+    return;
+  }
+
+  navigate('/', true);
 }
+
+window.addEventListener('popstate', () => {
+  renderRoute().catch((error) => renderFatal(error));
+});
 
 window.addEventListener('beforeunload', stopTimers);
-window.addEventListener('dblclick', (event) => event.preventDefault(), { passive: false });
-document.addEventListener('gesturestart', (event) => event.preventDefault(), { passive: false });
-document.addEventListener('touchmove', (event) => {
-  if (event.scale && event.scale !== 1) event.preventDefault();
-}, { passive: false });
-boot();
+
+renderRoute().catch((error) => renderFatal(error));
