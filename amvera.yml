@@ -1,0 +1,7 @@
+runtime: nodejs20
+
+build:
+  - npm install
+
+start:
+  - npm start
