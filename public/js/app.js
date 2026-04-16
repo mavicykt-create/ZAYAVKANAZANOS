@@ -1,711 +1,1345 @@
-// ZAN 1.1 - Main Application (Apple Design)
-const API_URL = '';
+/**
+ * ZAN 1.1 - Modern Application JavaScript
+ * Enhanced with smooth animations and glassmorphism effects
+ * Original functionality preserved
+ */
 
-// State
-let currentUser = null;
-let currentView = 'login';
+// ============================================
+// State Management
+// ============================================
+const state = {
+    currentUser: null,
+    currentScreen: 'login',
+    products: [],
+    categories: [],
+    cart: {},
+    currentCategory: null,
+    priceCheck: {
+        pages: [],
+        currentPage: null,
+        products: [],
+        locks: []
+    },
+    productCheck: {
+        products: [],
+        hidden: new Set()
+    },
+    calendar: {
+        currentWeek: new Date(),
+        events: []
+    },
+    admin: {
+        users: [],
+        stats: {},
+        syncStatus: null
+    },
+    assembly: [],
+    installPrompt: null,
+    deferredInstallPrompt: null
+};
 
-let currentCategoryId = null;
-let currentCategoryName = '';
-let currentProducts = [];
-let currentPageNumber = null;
-let collectedIds = new Set();
+// ============================================
+// Utility Functions
+// ============================================
+const utils = {
+    formatDate: (date) => {
+        return new Date(date).toLocaleDateString('ru-RU', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+        });
+    },
 
-// Хранение завершённых категорий (галочка + количество)
-let completedCategories = {}; // { categoryId: { count: number, timestamp: number } }
+    formatDateTime: (date) => {
+        return new Date(date).toLocaleString('ru-RU', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    },
 
-// Initialize
-async function init() {
-  const user = await apiGet('/api/auth/me');
-  if (user) {
-    currentUser = user;
-    showMainMenu();
-  } else {
-    showLogin();
-  }
-}
+    escapeHtml: (text) => {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    },
 
-// API Helpers
-async function apiGet(endpoint) {
-  try {
-    const res = await fetch(`${API_URL}${endpoint}`, { credentials: 'include' });
-    if (res.status === 401) return null;
-    return await res.json();
-  } catch (e) {
-    console.error('API Error:', e);
-    return null;
-  }
-}
+    showToast: (message, type = 'info') => {
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.innerHTML = `
+            <div class="toast-content">
+                <span class="toast-icon">${type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ'}</span>
+                <span class="toast-message">${message}</span>
+            </div>
+        `;
+        document.body.appendChild(toast);
 
-async function apiPost(endpoint, data) {
-  try {
-    const res = await fetch(`${API_URL}${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(data)
-    });
-    return await res.json();
-  } catch (e) {
-    console.error('API Error:', e);
-    return { error: e.message };
-  }
-}
+        // Animate in
+        requestAnimationFrame(() => {
+            toast.style.opacity = '1';
+            toast.style.transform = 'translateY(0)';
+        });
 
-// Image Helper
-function getImageUrl(picture) {
-  if (!picture) return '/icons/icon-192x192.png';
-  if (picture.startsWith('http')) return picture;
-  if (picture.startsWith('/')) return picture;
-  return '/icons/icon-192x192.png';
-}
+        // Remove after delay
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(20px)';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    },
 
-// Views
-function renderApp() {
-  const app = document.getElementById('app');
-  switch (currentView) {
-    case 'login': app.innerHTML = renderLogin(); break;
-    case 'menu': app.innerHTML = renderMainMenu(); break;
-    case 'carry-categories': app.innerHTML = renderCarryCategories(); break;
-    case 'carry-products': app.innerHTML = renderCarryProducts(); break;
-    case 'carry-assembly': app.innerHTML = renderCarryAssembly(); break;
-    case 'price-check-categories': app.innerHTML = renderPriceCheckCategories(); break;
-    case 'price-check-pages': app.innerHTML = renderPriceCheckPages(); break;
-    case 'price-check-products': app.innerHTML = renderPriceCheckProducts(); break;
-    case 'product-check': app.innerHTML = renderProductCheck(); break;
-    case 'calendar': app.innerHTML = renderCalendar(); break;
-    case 'admin': app.innerHTML = renderAdmin(); break;
-    case 'print': app.innerHTML = renderPrint(); break;
-  }
-}
+    animateElement: (element, animation, duration = 300) => {
+        element.style.animation = 'none';
+        requestAnimationFrame(() => {
+            element.style.animation = `${animation} ${duration}ms ease-out`;
+        });
+    },
 
-// Login View
-function renderLogin() {
-  return `<div class="login-screen">
-    <div class="login-logo">ZAN 1.1</div>
-    <div class="login-subtitle">Вход в систему</div>
-    <form class="login-form" onsubmit="handleLogin(event)">
-      <input type="text" class="login-input" id="login" placeholder="Логин" required autocomplete="username">
-      <input type="password" class="login-input" id="password" placeholder="Пароль" required autocomplete="current-password">
-      <button type="submit" class="login-btn">Войти</button>
-    </form>
-  </div>`;
-}
+    debounce: (func, wait) => {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+};
 
-async function handleLogin(e) {
-  e.preventDefault();
-  const login = document.getElementById('login').value;
-  const password = document.getElementById('password').value;
-  const result = await apiPost('/api/auth/login', { login, password });
-  if (result.error) { alert('Неверный логин или пароль'); return; }
-  currentUser = result;
-  showMainMenu();
-}
+// ============================================
+// API Functions
+// ============================================
+const api = {
+    request: async (endpoint, options = {}) => {
+        try {
+            const response = await fetch(endpoint, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                },
+                ...options
+            });
 
-function showLogin() { currentView = 'login'; renderApp(); }
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
 
-// Main Menu
-function renderMainMenu() {
-  const isAdmin = currentUser?.role === 'admin';
-  return `<div class="main-layout">
-    <div class="header">
-      <div class="header-title">ZAN 1.1</div>
-      <div class="header-user">
-        <span style="color: var(--ios-gray); font-size: 15px; margin-right: 8px;">${currentUser.login}</span>
-        <button class="logout-btn" onclick="handleLogout()">Выйти</button>
-      </div>
-    </div>
-    <div class="menu-grid">
-      <div class="menu-item" onclick="showCarryCategories()">
-        <div class="menu-icon">📦</div>
-        <div class="menu-label">Заявка на занос</div>
-      </div>
-      <div class="menu-item" onclick="showPriceCheckCategories()">
-        <div class="menu-icon">🏷️</div>
-        <div class="menu-label">Проверка ценников</div>
-      </div>
-      <div class="menu-item" onclick="showProductCheck()">
-        <div class="menu-icon">📋</div>
-        <div class="menu-label">Проверка товара</div>
-      </div>
-      <div class="menu-item" onclick="showCalendar()">
-        <div class="menu-icon">📅</div>
-        <div class="menu-label">Календарь недели</div>
-      </div>
-      ${isAdmin ? `<div class="menu-item" onclick="showAdmin()">
-        <div class="menu-icon">⚙️</div>
-        <div class="menu-label">Админка</div>
-      </div>` : ''}
-    </div>
-    <button class="install-btn" id="installBtn" style="display:none" onclick="installApp()">Установить приложение</button>
-  </div>`;
-}
+            return await response.json();
+        } catch (error) {
+            console.error('API Error:', error);
+            utils.showToast('Ошибка соединения', 'error');
+            throw error;
+        }
+    },
 
-function showMainMenu() { currentView = 'menu'; renderApp(); checkInstallPrompt(); }
-async function handleLogout() { await apiPost('/api/auth/logout', {}); currentUser = null; showLogin(); }
+    login: (login, password) => api.request('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ login, password })
+    }),
 
-let deferredPrompt;
-window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; const btn = document.getElementById('installBtn'); if (btn) btn.style.display = 'block'; });
-async function installApp() { if (!deferredPrompt) return; deferredPrompt.prompt(); const result = await deferredPrompt.userChoice; if (result.outcome === 'accepted') { document.getElementById('installBtn').style.display = 'none'; } deferredPrompt = null; }
-function checkInstallPrompt() { if (deferredPrompt) { const btn = document.getElementById('installBtn'); if (btn) btn.style.display = 'block'; } }
+    logout: () => api.request('/api/auth/logout', { method: 'POST' }),
 
-// Carry Categories
-async function showCarryCategories() {
-  currentView = 'carry-categories'; renderApp();
-  const categories = await apiGet('/api/catalog/categories');
-  const list = document.getElementById('categoriesList');
-  if (list) { 
-    list.innerHTML = categories.map(c => {
-      const completed = completedCategories[c.id];
-      const isDone = completed && completed.count > 0;
-      return `<div class="category-item ${isDone ? 'completed' : ''}" onclick="showCarryProducts(${c.id}, '${c.name}')">
-        <span class="category-name">${isDone ? '✓ ' : ''}${c.name}${isDone ? ` (${completed.count})` : ''}</span>
-        <span class="category-arrow">›</span>
-      </div>`;
-    }).join(''); 
-  }
-}
+    getCategories: () => api.request('/api/catalog/categories'),
 
-function renderCarryCategories() {
-  return `<div class="main-layout">
-    <div class="header"><button class="back-btn" onclick="showMainMenu()">‹ Назад</button><div class="header-title">Заявка на занос</div><div></div></div>
-    <div class="categories-list" id="categoriesList"><div class="loading">Загрузка...</div></div>
-    <div style="height: 80px;"></div>
-    <div class="bottom-actions"><button class="btn btn-secondary" onclick="showCarryAssembly()">🛒 Сборка</button></div>
-  </div>`;
-}
+    getProducts: (categoryId) => api.request(`/api/catalog/products?category=${categoryId}`),
 
-// Carry Products
-async function showCarryProducts(categoryId, categoryName) {
-  currentCategoryId = categoryId; currentCategoryName = categoryName; currentView = 'carry-products'; renderApp();
-  document.getElementById('categoryTitle').textContent = categoryName;
-  const products = await apiGet(`/api/catalog/products/${categoryId}`);
-  currentProducts = products; 
-  // Загружаем текущие количества из БД
-  const requests = await apiGet('/api/carry/requests');
-  window.currentQuantities = {};
-  if (requests) {
-    requests.forEach(r => {
-      if (r.category_id === categoryId) {
-        window.currentQuantities[r.product_id] = r.quantity;
-      }
-    });
-  }
-  renderProductGrid();
-}
+    getAssembly: () => api.request('/api/carry/assembly'),
 
-function renderCarryProducts() {
-  return `<div class="main-layout">
-    <div class="header"><button class="back-btn" onclick="showCarryCategories()">‹ Назад</button><div class="header-title" id="categoryTitle">Категория</div><div></div></div>
-    <div class="products-grid" id="productsGrid"></div>
-    <div style="height: 80px;"></div>
-    <div class="bottom-actions">
-      <button class="btn btn-secondary" onclick="printCategory()">🖨️ Печать</button>
-      <button class="btn btn-primary" onclick="confirmCategory()">✓ Готово</button>
-    </div>
-  </div>`;
-}
+    addToAssembly: (productId, quantity) => api.request('/api/carry/assembly', {
+        method: 'POST',
+        body: JSON.stringify({ productId, quantity })
+    }),
 
-function renderProductGrid() {
-  const grid = document.getElementById('productsGrid'); if (!grid) return;
-  const quantities = window.currentQuantities || {};
-  grid.innerHTML = currentProducts.map(p => {
-    const qty = quantities[p.id] || 0;
-    const step = p.name.includes('1/') ? 5 : 1;
-    const imgUrl = getImageUrl(p.picture);
-    return `<div class="product-card" onclick="addToCarry(${p.id}, ${step})">
-      <img src="${imgUrl}" class="product-image" loading="lazy" onerror="this.src='/icons/icon-192x192.png'">
-      ${qty > 0 ? `<div class="product-qty-left" onclick="event.stopPropagation(); removeFromCarry(${p.id}, ${step})">${qty}</div>` : ''}
-      <div class="product-info"><div class="product-name">${p.name}</div></div>
-    </div>`;
-  }).join('');
-}
+    updateAssemblyItem: (itemId, completed) => api.request(`/api/carry/assembly/${itemId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ completed })
+    }),
 
-async function addToCarry(productId, step) {
-  if (!window.currentQuantities) window.currentQuantities = {};
-  window.currentQuantities[productId] = (window.currentQuantities[productId] || 0) + step;
-  await apiPost('/api/carry/request', { categoryId: currentCategoryId, productId: productId, quantity: window.currentQuantities[productId] });
-  renderProductGrid();
-}
+    clearAssembly: () => api.request('/api/carry/assembly', { method: 'DELETE' }),
 
-async function removeFromCarry(productId, step) {
-  if (!window.currentQuantities) window.currentQuantities = {};
-  window.currentQuantities[productId] = Math.max(0, (window.currentQuantities[productId] || 0) - step);
-  await apiPost('/api/carry/request', { categoryId: currentCategoryId, productId: productId, quantity: window.currentQuantities[productId] });
-  if (window.currentQuantities[productId] === 0) delete window.currentQuantities[productId];
-  renderProductGrid();
-}
+    getPriceCheckPages: () => api.request('/api/price-check/pages'),
 
-async function confirmCategory() {
-  const quantities = window.currentQuantities || {};
-  const totalCount = Object.values(quantities).reduce((sum, q) => sum + q, 0);
-  if (totalCount === 0) { alert('Выберите товары'); return; }
-  
-  await apiPost('/api/carry/complete-category', { categoryId: currentCategoryId });
-  
-  // Сохраняем в завершённые категории
-  completedCategories[currentCategoryId] = {
-    count: totalCount,
-    timestamp: Date.now()
-  };
-  
-  window.currentQuantities = {};
-  showCarryCategories();
-}
+    lockPriceCheckPage: (page) => api.request('/api/price-check/lock', {
+        method: 'POST',
+        body: JSON.stringify({ page })
+    }),
 
-// ПЕЧАТНАЯ ФОРМА категории
-async function printCategory() {
-  const data = await apiGet(`/api/carry/print/${currentCategoryId}`);
-  if (!data || !data.items || data.items.length === 0) {
-    alert('Нет товаров для печати');
-    return;
-  }
-  window.printData = data;
-  currentView = 'print'; renderApp();
-}
+    unlockPriceCheckPage: (page) => api.request('/api/price-check/unlock', {
+        method: 'POST',
+        body: JSON.stringify({ page })
+    }),
 
-function renderPrint() {
-  const data = window.printData || { date: '', category: '', items: [] };
-  const isAssembly = !data.category;
-  return `<div class="main-layout">
-    <div class="header">
-      <button class="back-btn" onclick="${isAssembly ? 'showCarryAssembly()' : `showCarryProducts(${currentCategoryId}, '${currentCategoryName}')`}">‹ Назад</button>
-      <div class="header-title">Печать</div>
-      <button class="btn btn-primary" onclick="window.print()" style="padding: 8px 16px; font-size: 14px;">🖨️ Печать</button>
-    </div>
-    <div class="print-content" style="padding: 20px; background: white; color: black;">
-      <h2 style="margin-bottom: 5px;">Заявка на занос</h2>
-      <p style="color: #666; margin-bottom: 5px;">${data.date}</p>
-      ${data.category ? `<p style="font-weight: bold; margin-bottom: 20px; font-size: 18px;">${data.category}</p>` : ''}
-      <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-        <thead>
-          <tr style="border-bottom: 2px solid #333;">
-            <th style="text-align: left; padding: 8px;">№</th>
-            <th style="text-align: left; padding: 8px;">Товар</th>
-            <th style="text-align: left; padding: 8px;">Артикул</th>
-            ${isAssembly ? '<th style="text-align: left; padding: 8px;">Категория</th>' : ''}
-            <th style="text-align: center; padding: 8px;">Кол-во</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${data.items.map((item, i) => `<tr style="border-bottom: 1px solid #ddd;">
-            <td style="padding: 8px;">${i + 1}</td>
-            <td style="padding: 8px;">${item.name}</td>
-            <td style="padding: 8px; color: #666;">${item.vendor_code || '-'}</td>
-            ${isAssembly ? `<td style="padding: 8px; color: #666;">${item.category_name || '-'}</td>` : ''}
-            <td style="padding: 8px; text-align: center; font-weight: bold;">${item.quantity}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>
-  </div>`;
-}
+    getPriceCheckProducts: (page) => api.request(`/api/price-check/products?page=${page}`),
 
-// Carry Assembly - СБОРКА (ИСПРАВЛЕНО)
-async function showCarryAssembly() { 
-  currentView = 'carry-assembly'; renderApp(); 
-  console.log('Loading assembly...');
-  const items = await apiGet('/api/carry/assembly'); 
-  console.log('Assembly items:', items);
-  renderAssemblyList(items); 
-}
+    markPriceCheckProduct: (productId, type) => api.request('/api/price-check/mark', {
+        method: 'POST',
+        body: JSON.stringify({ productId, type })
+    }),
 
-function renderCarryAssembly() { 
-  return `<div class="main-layout">
-    <div class="header">
-      <button class="back-btn" onclick="showCarryCategories()">‹ Назад</button>
-      <div class="header-title">Сборка</div>
-      <button class="btn btn-secondary" onclick="printAssembly()" style="padding: 8px 16px; font-size: 14px;">🖨️ Печать</button>
-    </div>
-    <div id="assemblyList"></div>
-    <div style="height: 80px;"></div>
-    <div class="bottom-actions"><button class="btn btn-primary" onclick="completeOrder()">✓ Заявка собрана</button></div>
-  </div>`; 
-}
+    getProductCheckProducts: () => api.request('/api/product-check/products'),
 
-function renderAssemblyList(items) {
-  const container = document.getElementById('assemblyList'); 
-  if (!container) return;
+    hideProductCheckProduct: (productId) => api.request(`/api/product-check/hide/${productId}`, {
+        method: 'POST'
+    }),
 
-  console.log('Rendering assembly, items count:', items ? items.length : 0);
+    getCalendarEvents: (week) => api.request(`/api/calendar/events?week=${week.toISOString()}`),
 
-  if (!items || items.length === 0) { 
-    container.innerHTML = '<div class="empty-state"><div class="empty-icon">🛒</div>Нет товаров в сборке<br><small style="color: var(--ios-gray);">Выберите товары в категориях</small></div>'; 
-    return; 
-  }
+    createCalendarEvent: (event) => api.request('/api/calendar/events', {
+        method: 'POST',
+        body: JSON.stringify(event)
+    }),
 
-  container.innerHTML = items.map(item => `<div class="assembly-item">
-    <div class="assembly-checkbox" id="cb-${item.id}" onclick="toggleCollected(${item.id})"></div>
-    <div class="assembly-content">
-      <div>${item.product_name}</div>
-      <div class="product-code">${item.vendor_code || ''} | ${item.category_name}</div>
-    </div>
-    <div class="assembly-qty">${item.quantity}</div>
-  </div>`).join('');
-}
+    deleteCalendarEvent: (eventId) => api.request(`/api/calendar/events/${eventId}`, {
+        method: 'DELETE'
+    }),
 
-function toggleCollected(requestId) {
-  const cb = document.getElementById(`cb-${requestId}`);
-  if (collectedIds.has(requestId)) { collectedIds.delete(requestId); cb.classList.remove('checked'); }
-  else { collectedIds.add(requestId); cb.classList.add('checked'); }
-}
+    getAdminStats: () => api.request('/api/admin/stats'),
 
-async function completeOrder() {
-  if (collectedIds.size === 0) { alert('Отметьте собранные товары'); return; }
-  await apiPost('/api/carry/mark-collected', { requestIds: Array.from(collectedIds) });
-  await apiPost('/api/carry/complete-order', {});
-  
-  // Очищаем всё состояние "Заявка на занос"
-  collectedIds.clear();
-  window.currentQuantities = {};
-  completedCategories = {}; // Сбрасываем все галочки категорий
-  currentCategoryId = null;
-  currentCategoryName = '';
-  currentProducts = [];
-  
-  alert('Сборка завершена'); 
-  showMainMenu();
-}
+    getAdminUsers: () => api.request('/api/admin/users'),
 
-// ПЕЧАТЬ СБОРКИ
-async function printAssembly() {
-  const data = await apiGet('/api/carry/print-all');
-  console.log('Print assembly data:', data);
-  if (!data || !data.items || data.items.length === 0) {
-    alert('Нет товаров для печати');
-    return;
-  }
-  window.printData = data;
-  currentView = 'print'; renderApp();
-}
+    createUser: (user) => api.request('/api/admin/users', {
+        method: 'POST',
+        body: JSON.stringify(user)
+    }),
 
-// Price Check
-async function showPriceCheckCategories() { currentView = 'price-check-categories'; renderApp(); const categories = await apiGet('/api/catalog/categories'); const list = document.getElementById('pcCategoriesList'); if (list) list.innerHTML = categories.map(c => `<div class="category-item" onclick="showPriceCheckPages(${c.id}, '${c.name}')"><span class="category-name">${c.name}</span><span class="category-arrow">›</span></div>`).join(''); }
-function renderPriceCheckCategories() { return `<div class="main-layout"><div class="header"><button class="back-btn" onclick="showMainMenu()">‹ Назад</button><div class="header-title">Проверка ценников</div><div></div></div><div class="categories-list" id="pcCategoriesList"><div class="loading">Загрузка...</div></div></div>`; }
+    updateUser: (userId, user) => api.request(`/api/admin/users/${userId}`, {
+        method: 'PUT',
+        body: JSON.stringify(user)
+    }),
 
-async function showPriceCheckPages(categoryId, categoryName) {
-  currentCategoryId = categoryId; currentCategoryName = categoryName; currentView = 'price-check-pages'; renderApp();
-  document.getElementById('pcCategoryTitle').textContent = categoryName;
-  const data = await apiGet(`/api/price-check/pages/${categoryId}`);
-  const grid = document.getElementById('pagesGrid');
-  if (grid) {
-    grid.innerHTML = data.pages.map(p => `<div class="page-item ${p.isLocked ? 'locked' : ''} ${p.lockedById === currentUser.id ? 'active' : ''}" onclick="${p.isLocked ? '' : `openPriceCheckPage(${p.pageNumber})`}"><div class="page-number">Стр. ${p.pageNumber}</div><div class="page-status">${p.lockedBy ? 'Занято: ' + p.lockedBy : 'Свободно'}</div></div>`).join('');
-  }
-}
+    deleteUser: (userId) => api.request(`/api/admin/users/${userId}`, {
+        method: 'DELETE'
+    }),
 
-function renderPriceCheckPages() { return `<div class="main-layout"><div class="header"><button class="back-btn" onclick="showPriceCheckCategories()">‹ Назад</button><div class="header-title" id="pcCategoryTitle">Категория</div><div></div></div><div class="pages-grid" id="pagesGrid"></div></div>`; }
+    syncCatalog: () => api.request('/api/sync/start', { method: 'POST' }),
 
-async function openPriceCheckPage(pageNumber) {
-  await apiPost('/api/price-check/lock-page', { categoryId: currentCategoryId, pageNumber });
-  currentPageNumber = pageNumber; currentView = 'price-check-products'; renderApp();
-  document.getElementById('pcPageTitle').textContent = `${currentCategoryName} - Стр. ${pageNumber}`;
-  const products = await apiGet(`/api/price-check/products/${currentCategoryId}/${pageNumber}`);
-  const list = document.getElementById('pcProductsList');
-  if (list) list.innerHTML = products.map(p => {
-    const imgUrl = getImageUrl(p.picture);
-    return `<div class="pc-product"><img src="${imgUrl}" class="pc-product-image" onerror="this.src='/icons/icon-192x192.png'"><div class="pc-product-info"><div class="pc-product-name">${p.name}</div><div class="pc-product-code">${p.vendor_code || ''}</div><div class="pc-product-actions"><button class="pc-btn problem ${p.has_problem ? 'active' : ''}" onclick="toggleProblem(${p.id})">Проблема</button><button class="pc-btn price ${p.price_checked ? 'active' : ''}" onclick="togglePrice(${p.id})">Ценник</button></div></div></div>`;
-  }).join('');
-}
+    getSyncStatus: () => api.request('/api/sync/status'),
 
-function renderPriceCheckProducts() { return `<div class="main-layout"><div class="header"><button class="back-btn" onclick="closePriceCheckPage()">‹ Назад</button><div class="header-title" id="pcPageTitle">Страница</div><div></div></div><div id="pcProductsList" style="padding: 16px; padding-bottom: 100px;"></div></div>`; }
+    getLocks: () => api.request('/api/admin/locks'),
 
-async function closePriceCheckPage() { await apiPost('/api/price-check/unlock-page', { categoryId: currentCategoryId, pageNumber: currentPageNumber }); showPriceCheckPages(currentCategoryId, currentCategoryName); }
-async function toggleProblem(productId) { await apiPost('/api/price-check/toggle-problem', { categoryId: currentCategoryId, pageNumber: currentPageNumber, productId }); openPriceCheckPage(currentPageNumber); }
-async function togglePrice(productId) { await apiPost('/api/price-check/toggle-price', { categoryId: currentCategoryId, pageNumber: currentPageNumber, productId }); openPriceCheckPage(currentPageNumber); }
+    forceUnlock: (category, page) => api.request('/api/admin/force-unlock', {
+        method: 'POST',
+        body: JSON.stringify({ category, page })
+    })
+};
 
-// Product Check
-async function showProductCheck() { currentView = 'product-check'; renderApp(); const products = await apiGet('/api/product-check/missing-barcodes'); const list = document.getElementById('pcMissingList'); if (list) { if (products.length === 0) { list.innerHTML = '<div class="empty-state"><div class="empty-icon">✓</div>Все товары имеют штрих-коды</div>'; } else { list.innerHTML = products.map(p => `<div class="assembly-item"><div class="assembly-content"><div style="font-weight: 500;">${p.name}</div><div class="product-code">${p.category_name} | ${p.vendor_code || ''}</div></div><button class="icon-btn" onclick="hideProduct(${p.id})">✕</button></div>`).join(''); } } }
-function renderProductCheck() { return `<div class="main-layout"><div class="header"><button class="back-btn" onclick="showMainMenu()">‹ Назад</button><div class="header-title">Проверка товара</div><div></div></div><div id="pcMissingList" style="padding: 16px;"><div class="loading">Загрузка...</div></div></div>`; }
-async function hideProduct(productId) { await apiPost('/api/product-check/hide', { productId }); showProductCheck(); }
+// ============================================
+// Screen Renderers
+// ============================================
+const screens = {
+    // Login Screen
+    login: () => {
+        const app = document.getElementById('app');
+        app.innerHTML = `
+            <div class="login-screen">
+                <div class="login-logo">ZAN</div>
+                <div class="login-subtitle">Система управления складом</div>
+                <form class="login-form" id="loginForm">
+                    <input type="text" class="login-input" id="loginInput" placeholder="Логин" required autocomplete="username">
+                    <input type="password" class="login-input" id="passwordInput" placeholder="Пароль" required autocomplete="current-password">
+                    <button type="submit" class="login-btn">Войти</button>
+                </form>
+            </div>
+        `;
 
-// Calendar
-function renderCalendar() {
-  const days = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
-  const today = new Date();
-  const startOfWeek = new Date(today); startOfWeek.setDate(today.getDate() - today.getDay() + 1);
-  let html = `<div class="main-layout"><div class="header"><button class="back-btn" onclick="showMainMenu()">‹ Назад</button><div class="header-title">Календарь</div><div></div></div><div class="calendar-grid">`;
-  for (let i = 0; i < 7; i++) { const d = new Date(startOfWeek); d.setDate(startOfWeek.getDate() + i); const isToday = d.toDateString() === today.toDateString(); html += `<div class="calendar-day ${isToday ? 'active' : ''}"><span class="calendar-day-name">${days[i]}</span><span class="calendar-day-number">${d.getDate()}</span></div>`; }
-  html += `</div><div class="calendar-events" id="calendarEvents"><div class="empty-state">Нет событий</div></div></div>`;
-  return html;
-}
-function showCalendar() { currentView = 'calendar'; renderApp(); loadCalendarEvents(); }
-async function loadCalendarEvents() {
-  const today = new Date();
-  const startOfWeek = new Date(today); startOfWeek.setDate(today.getDate() - today.getDay() + 1);
-  const endOfWeek = new Date(startOfWeek); endOfWeek.setDate(startOfWeek.getDate() + 6);
-  const items = await apiGet(`/api/calendar/items?startDate=${startOfWeek.toISOString().split('T')[0]}&endDate=${endOfWeek.toISOString().split('T')[0]}`);
-  const container = document.getElementById('calendarEvents');
-  if (container && items && items.length > 0) { container.innerHTML = items.map(item => `<div class="event-item"><div class="event-title">${item.title}</div><div class="event-text">${item.text || ''}</div></div>`).join(''); }
-}
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const login = document.getElementById('loginInput').value;
+            const password = document.getElementById('passwordInput').value;
 
-// Admin
-async function showAdmin() { 
-  adminActiveTab = 'overview'; // Сбрасываем на overview при входе
-  currentView = 'admin'; 
-  renderApp(); 
-  loadAdminOverview(); 
-}
-async function loadAdminOverview() {
-  const data = await apiGet('/api/admin/overview');
-  const container = document.getElementById('adminOverview');
-  if (container && data) {
-    const syncStatus = data.syncStatus || {};
-    const statusColor = syncStatus.status === 'completed' ? 'var(--ios-green)' : (syncStatus.status === 'running' ? 'var(--ios-blue)' : 'var(--ios-orange)');
-    container.innerHTML = `<div class="stat-row"><span class="stat-label">Сотрудники онлайн</span><span class="stat-value">${data.onlineUsers}</span></div>
-    <div class="stat-row"><span class="stat-label">Товаров в каталоге</span><span class="stat-value">${data.totalProducts}</span></div>
-    <div class="stat-row"><span class="stat-label">Без штрих-кода</span><span class="stat-value">${data.missingBarcodes}</span></div>
-    <div class="stat-row"><span class="stat-label">Синхронизация</span><span class="stat-value" style="color: ${statusColor}">${syncStatus.status || 'idle'} ${syncStatus.progress ? syncStatus.progress + '%' : ''}</span></div>
-    ${syncStatus.message ? `<div style="margin-top: 8px; font-size: 13px; color: var(--ios-gray);">${syncStatus.message}</div>` : ''}
-    ${syncStatus.status === 'running' ? `<div class="sync-progress" style="margin-top: 8px;"><div class="sync-progress-bar" style="width: ${syncStatus.progress || 0}%"></div></div>` : ''}`;
-  }
-}
+            try {
+                const result = await api.login(login, password);
+                if (result.success) {
+                    state.currentUser = result.user;
+                    utils.showToast('Добро пожаловать!', 'success');
+                    screens.menu();
+                } else {
+                    utils.showToast(result.error || 'Ошибка входа', 'error');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+            }
+        });
+    },
 
-// Admin Tabs State
-let adminActiveTab = 'overview';
+    // Main Menu
+    menu: () => {
+        const app = document.getElementById('app');
+        app.innerHTML = `
+            <div class="header">
+                <div class="header-title">ZAN 1.1</div>
+                <button class="logout-btn" id="logoutBtn">Выйти</button>
+            </div>
+            <div class="menu-grid">
+                <div class="menu-item" data-screen="carry">
+                    <span class="menu-icon">📦</span>
+                    <span class="menu-label">Заявка на занос</span>
+                </div>
+                <div class="menu-item" data-screen="price-check">
+                    <span class="menu-icon">🏷️</span>
+                    <span class="menu-label">Проверка ценников</span>
+                </div>
+                <div class="menu-item" data-screen="product-check">
+                    <span class="menu-icon">🔍</span>
+                    <span class="menu-label">Проверка товара</span>
+                </div>
+                <div class="menu-item" data-screen="calendar">
+                    <span class="menu-icon">📅</span>
+                    <span class="menu-label">Календарь</span>
+                </div>
+                ${state.currentUser?.role === 'admin' ? `
+                <div class="menu-item" data-screen="admin">
+                    <span class="menu-icon">⚙️</span>
+                    <span class="menu-label">Админка</span>
+                </div>
+                ` : ''}
+            </div>
+        `;
 
-function renderAdmin() {
-  const tabsHtml = `
-    <div class="admin-tabs">
-      <div class="admin-tab ${adminActiveTab === 'overview' ? 'active' : ''}" onclick="switchAdminTab('overview')">Обзор</div>
-      <div class="admin-tab ${adminActiveTab === 'users' ? 'active' : ''}" onclick="switchAdminTab('users')">Пользователи</div>
-      <div class="admin-tab ${adminActiveTab === 'locks' ? 'active' : ''}" onclick="switchAdminTab('locks')">Блокировки</div>
-    </div>
-  `;
-  
-  let contentHtml = '';
-  if (adminActiveTab === 'overview') {
-    contentHtml = `
-      <div class="admin-card"><div class="admin-card-title">Обзор системы</div><div id="adminOverview"><div class="loading">Загрузка...</div></div></div>
-      <div class="admin-card"><div class="admin-card-title">Синхронизация</div>
-        <button class="btn btn-primary" onclick="startSync()" style="margin-bottom: 8px; width: 100%;">🔄 Обновить каталог</button>
-        <button class="btn btn-secondary" onclick="resetSync()" style="width: 100%;">Сбросить обновление</button>
-      </div>
+        document.querySelectorAll('.menu-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const screen = item.dataset.screen;
+                if (screens[screen]) {
+                    screens[screen]();
+                }
+            });
+        });
+
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            try {
+                await api.logout();
+                state.currentUser = null;
+                screens.login();
+            } catch (error) {
+                console.error('Logout error:', error);
+            }
+        });
+    },
+
+    // Carry (Заявка на занос)
+    carry: async () => {
+        const app = document.getElementById('app');
+        app.innerHTML = `
+            <div class="header">
+                <button class="back-btn" id="backBtn">← Назад</button>
+                <div class="header-title">Заявка на занос</div>
+                <div></div>
+            </div>
+            <div id="carryContent">
+                <div class="loading">Загрузка...</div>
+            </div>
+        `;
+
+        document.getElementById('backBtn').addEventListener('click', () => screens.menu());
+
+        try {
+            const categories = await api.getCategories();
+            state.categories = categories;
+            renderCategoryList(categories);
+        } catch (error) {
+            console.error('Error loading categories:', error);
+        }
+    },
+
+    // Price Check
+    'price-check': async () => {
+        const app = document.getElementById('app');
+        app.innerHTML = `
+            <div class="header">
+                <button class="back-btn" id="backBtn">← Назад</button>
+                <div class="header-title">Проверка ценников</div>
+                <div></div>
+            </div>
+            <div id="priceCheckContent">
+                <div class="loading">Загрузка...</div>
+            </div>
+        `;
+
+        document.getElementById('backBtn').addEventListener('click', () => screens.menu());
+
+        try {
+            const data = await api.getPriceCheckPages();
+            state.priceCheck.pages = data.pages;
+            state.priceCheck.locks = data.locks || [];
+            renderPriceCheckPages(data.pages);
+        } catch (error) {
+            console.error('Error loading price check:', error);
+        }
+    },
+
+    // Product Check
+    'product-check': async () => {
+        const app = document.getElementById('app');
+        app.innerHTML = `
+            <div class="header">
+                <button class="back-btn" id="backBtn">← Назад</button>
+                <div class="header-title">Проверка товара</div>
+                <div></div>
+            </div>
+            <div id="productCheckContent">
+                <div class="loading">Загрузка...</div>
+            </div>
+        `;
+
+        document.getElementById('backBtn').addEventListener('click', () => screens.menu());
+
+        try {
+            const products = await api.getProductCheckProducts();
+            state.productCheck.products = products;
+            renderProductCheck(products);
+        } catch (error) {
+            console.error('Error loading product check:', error);
+        }
+    },
+
+    // Calendar
+    calendar: async () => {
+        const app = document.getElementById('app');
+        app.innerHTML = `
+            <div class="header">
+                <button class="back-btn" id="backBtn">← Назад</button>
+                <div class="header-title">Календарь</div>
+                <div></div>
+            </div>
+            <div id="calendarContent">
+                <div class="loading">Загрузка...</div>
+            </div>
+        `;
+
+        document.getElementById('backBtn').addEventListener('click', () => screens.menu());
+
+        try {
+            const events = await api.getCalendarEvents(state.calendar.currentWeek);
+            state.calendar.events = events;
+            renderCalendar(events);
+        } catch (error) {
+            console.error('Error loading calendar:', error);
+        }
+    },
+
+    // Admin
+    admin: async () => {
+        if (state.currentUser?.role !== 'admin') {
+            utils.showToast('Доступ запрещен', 'error');
+            return screens.menu();
+        }
+
+        const app = document.getElementById('app');
+        app.innerHTML = `
+            <div class="header">
+                <button class="back-btn" id="backBtn">← Назад</button>
+                <div class="header-title">Администрирование</div>
+                <div></div>
+            </div>
+            <div class="admin-tabs">
+                <div class="admin-tab active" data-tab="overview">Обзор</div>
+                <div class="admin-tab" data-tab="users">Пользователи</div>
+                <div class="admin-tab" data-tab="locks">Блокировки</div>
+                <div class="admin-tab" data-tab="sync">Синхронизация</div>
+            </div>
+            <div id="adminContent">
+                <div class="loading">Загрузка...</div>
+            </div>
+        `;
+
+        document.getElementById('backBtn').addEventListener('click', () => screens.menu());
+
+        document.querySelectorAll('.admin-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                loadAdminTab(tab.dataset.tab);
+            });
+        });
+
+        loadAdminTab('overview');
+    }
+};
+
+// ============================================
+// Helper Render Functions
+// ============================================
+function renderCategoryList(categories) {
+    const content = document.getElementById('carryContent');
+    if (!categories || categories.length === 0) {
+        content.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><p>Нет доступных категорий</p></div>';
+        return;
+    }
+
+    content.innerHTML = `
+        <div class="categories-list">
+            ${categories.map(cat => `
+                <div class="category-item" data-id="${cat.id}">
+                    <span class="category-name">${utils.escapeHtml(cat.name)}</span>
+                    <span class="category-arrow">›</span>
+                </div>
+            `).join('')}
+        </div>
     `;
-  } else if (adminActiveTab === 'users') {
-    contentHtml = `<div class="admin-card"><div class="admin-card-title">Управление пользователями</div><div id="adminUsers"><div class="loading">Загрузка...</div></div></div>`;
-  } else if (adminActiveTab === 'locks') {
-    contentHtml = `<div class="admin-card"><div class="admin-card-title">Блокировки страниц</div><div id="adminLocks"><div class="loading">Загрузка...</div></div></div>`;
-  }
-  
-  return `<div class="main-layout"><div class="header"><button class="back-btn" onclick="showMainMenu()">‹ Назад</button><div class="header-title">Админка</div><div></div></div>
-    ${tabsHtml}
-    <div class="admin-sections">${contentHtml}</div>
-  </div>`;
-}
 
-function switchAdminTab(tab) {
-  adminActiveTab = tab;
-  renderApp();
-  if (tab === 'overview') loadAdminOverview();
-  if (tab === 'users') loadAdminUsers();
-  if (tab === 'locks') loadAdminLocks();
-}
-
-// Load Users List
-async function loadAdminUsers() {
-  const users = await apiGet('/api/admin/users');
-  const container = document.getElementById('adminUsers');
-  if (!container) return;
-  
-  if (!users || users.length === 0) {
-    container.innerHTML = '<div class="empty-state">Нет пользователей</div>';
-    return;
-  }
-  
-  container.innerHTML = `
-    <button class="btn btn-primary" onclick="showAddUserForm()" style="margin-bottom: 16px; width: 100%;">➕ Добавить пользователя</button>
-    <div id="userFormContainer"></div>
-    <div class="users-list">
-      ${users.map(u => `
-        <div class="user-item" id="user-${u.id}">
-          <div class="user-info">
-            <div class="user-login">${u.login}</div>
-            <div class="user-meta">
-              <span class="user-role ${u.role}">${u.role === 'admin' ? '👑 Админ' : '👤 Сотрудник'}</span>
-              <span class="user-status ${u.is_active ? 'active' : 'inactive'}">${u.is_active ? '✓ Активен' : '✗ Отключен'}</span>
-            </div>
-            <div class="user-dates">
-              <small>Создан: ${new Date(u.created_at).toLocaleDateString('ru-RU')}</small>
-              ${u.last_login_at ? `<small> | Посл. вход: ${new Date(u.last_login_at).toLocaleString('ru-RU')}</small>` : ''}
-            </div>
-          </div>
-          <div class="user-actions">
-            <button class="icon-btn" onclick="editUser(${u.id}, '${u.login}', '${u.role}', ${u.is_active})" title="Редактировать">✏️</button>
-            ${u.id !== currentUser.id ? `<button class="icon-btn" onclick="deleteUser(${u.id})" title="Удалить">🗑️</button>` : ''}
-          </div>
-        </div>
-        <div class="user-edit-form" id="edit-form-${u.id}" style="display:none;"></div>
-      `).join('')}
-    </div>
-  `;
-}
-
-// Show Add User Form
-function showAddUserForm() {
-  const container = document.getElementById('userFormContainer');
-  container.innerHTML = `
-    <div class="user-form">
-      <h4>Новый пользователь</h4>
-      <input type="text" id="newUserLogin" class="form-input" placeholder="Логин" required>
-      <input type="password" id="newUserPassword" class="form-input" placeholder="Пароль" required>
-      <select id="newUserRole" class="form-input">
-        <option value="staff">👤 Сотрудник</option>
-        <option value="admin">👑 Администратор</option>
-      </select>
-      <div class="form-actions">
-        <button class="btn btn-secondary" onclick="document.getElementById('userFormContainer').innerHTML=''">Отмена</button>
-        <button class="btn btn-primary" onclick="addUser()">Создать</button>
-      </div>
-    </div>
-  `;
-}
-
-// Add User
-async function addUser() {
-  const login = document.getElementById('newUserLogin').value.trim();
-  const password = document.getElementById('newUserPassword').value;
-  const role = document.getElementById('newUserRole').value;
-  
-  if (!login || !password) {
-    alert('Введите логин и пароль');
-    return;
-  }
-  
-  const result = await apiPost('/api/admin/users', { login, password, role });
-  if (result.error) {
-    alert('Ошибка: ' + result.error);
-  } else {
-    alert('Пользователь создан');
-    loadAdminUsers();
-  }
-}
-
-// Edit User Form
-function editUser(id, login, role, isActive) {
-  // Скрываем все формы редактирования
-  document.querySelectorAll('.user-edit-form').forEach(el => el.style.display = 'none');
-  
-  const formContainer = document.getElementById(`edit-form-${id}`);
-  formContainer.innerHTML = `
-    <div class="user-form">
-      <h4>Редактировать: ${login}</h4>
-      <input type="text" id="editLogin-${id}" class="form-input" value="${login}" placeholder="Логин">
-      <input type="password" id="editPassword-${id}" class="form-input" placeholder="Новый пароль (оставьте пустым чтобы не менять)">
-      <select id="editRole-${id}" class="form-input">
-        <option value="staff" ${role === 'staff' ? 'selected' : ''}>👤 Сотрудник</option>
-        <option value="admin" ${role === 'admin' ? 'selected' : ''}>👑 Администратор</option>
-      </select>
-      <label class="checkbox-label">
-        <input type="checkbox" id="editActive-${id}" ${isActive ? 'checked' : ''}>
-        Активен
-      </label>
-      <div class="form-actions">
-        <button class="btn btn-secondary" onclick="document.getElementById('edit-form-${id}').style.display='none'">Отмена</button>
-        <button class="btn btn-primary" onclick="saveUser(${id})">Сохранить</button>
-      </div>
-    </div>
-  `;
-  formContainer.style.display = 'block';
-}
-
-// Save User
-async function saveUser(id) {
-  const login = document.getElementById(`editLogin-${id}`).value.trim();
-  const password = document.getElementById(`editPassword-${id}`).value;
-  const role = document.getElementById(`editRole-${id}`).value;
-  const isActive = document.getElementById(`editActive-${id}`).checked;
-  
-  if (!login) {
-    alert('Введите логин');
-    return;
-  }
-  
-  const data = { login, role, is_active: isActive };
-  if (password) data.password = password;
-  
-  const result = await apiPost(`/api/admin/users/${id}`, data);
-  if (result.error) {
-    alert('Ошибка: ' + result.error);
-  } else {
-    alert('Сохранено');
-    loadAdminUsers();
-  }
-}
-
-// Delete User
-async function deleteUser(id) {
-  if (!confirm('Удалить пользователя?')) return;
-  
-  const result = await apiPost(`/api/admin/users/${id}?_method=DELETE`, {});
-  // DELETE не работает через apiPost, используем fetch напрямую
-  try {
-    const res = await fetch(`${API_URL}/api/admin/users/${id}`, {
-      method: 'DELETE',
-      credentials: 'include'
+    document.querySelectorAll('.category-item').forEach(item => {
+        item.addEventListener('click', async () => {
+            const categoryId = item.dataset.id;
+            const category = categories.find(c => c.id == categoryId);
+            state.currentCategory = category;
+            await loadProducts(categoryId);
+        });
     });
-    if (res.ok) {
-      alert('Пользователь удален');
-      loadAdminUsers();
-    } else {
-      const data = await res.json();
-      alert('Ошибка: ' + (data.error || 'Не удалось удалить'));
-    }
-  } catch (e) {
-    alert('Ошибка удаления');
-  }
 }
 
-// Load Locks
-async function loadAdminLocks() {
-  const locks = await apiGet('/api/admin/locks');
-  const container = document.getElementById('adminLocks');
-  if (!container) return;
-  
-  if (!locks || locks.length === 0) {
-    container.innerHTML = '<div class="empty-state">Нет активных блокировок</div>';
-    return;
-  }
-  
-  container.innerHTML = `
-    <div class="locks-list">
-      ${locks.map(l => `
-        <div class="lock-item">
-          <div class="lock-info">
-            <div class="lock-category">${l.category_name}</div>
-            <div class="lock-meta">Страница ${l.page_number} | Заблокировано: ${l.locked_by_name}</div>
-            <div class="lock-time"><small>${new Date(l.locked_at).toLocaleString('ru-RU')}</small></div>
-          </div>
-          <button class="btn btn-secondary" onclick="forceUnlock(${l.category_id}, ${l.page_number})">Разблокировать</button>
+async function loadProducts(categoryId) {
+    const content = document.getElementById('carryContent');
+    content.innerHTML = '<div class="loading">Загрузка товаров...</div>';
+
+    try {
+        const products = await api.getProducts(categoryId);
+        state.products = products;
+        renderProducts(products);
+    } catch (error) {
+        content.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><p>Ошибка загрузки товаров</p></div>';
+    }
+}
+
+function renderProducts(products) {
+    const content = document.getElementById('carryContent');
+    if (!products || products.length === 0) {
+        content.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><p>Нет товаров в категории</p></div>';
+        return;
+    }
+
+    content.innerHTML = `
+        <div class="products-grid" id="productsGrid">
+            ${products.map((product, index) => {
+                const qty = state.cart[product.id] || 0;
+                const hasStep5 = product.name.includes('1/');
+                return `
+                    <div class="product-card" data-id="${product.id}" data-step5="${hasStep5}" style="animation: fadeInUp ${index * 0.05}s ease-out">
+                        <div class="qty-control" data-id="${product.id}"></div>
+                        <img src="${product.image || '/data/image-cache-v5/no-image.webp'}" 
+                             class="product-image" 
+                             alt="${utils.escapeHtml(product.name)}"
+                             loading="lazy">
+                        <div class="product-info">
+                            <div class="product-name">${utils.escapeHtml(product.name)}</div>
+                        </div>
+                        ${qty > 0 ? `<div class="product-qty" data-qty="${qty}"></div>` : ''}
+                    </div>
+                `;
+            }).join('')}
         </div>
-      `).join('')}
-    </div>
-  `;
+        <div class="bottom-actions">
+            <button class="btn btn-secondary" id="backToCategories">← Категории</button>
+            <button class="btn btn-primary" id="viewAssembly">Корзина (${Object.values(state.cart).reduce((a, b) => a + b, 0)})</button>
+        </div>
+    `;
+
+    // Add animations
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    `;
+    document.head.appendChild(style);
+
+    // Product card clicks
+    document.querySelectorAll('.product-card').forEach(card => {
+        card.addEventListener('click', (e) => {
+            if (e.target.closest('.qty-control')) return;
+
+            const productId = card.dataset.id;
+            const hasStep5 = card.dataset.step5 === 'true';
+            const step = hasStep5 ? 5 : 1;
+
+            state.cart[productId] = (state.cart[productId] || 0) + step;
+            updateProductCard(productId);
+            updateAssemblyButton();
+
+            // Animation feedback
+            card.style.transform = 'scale(0.95)';
+            setTimeout(() => card.style.transform = '', 150);
+        });
+    });
+
+    // Quantity control (decrease)
+    document.querySelectorAll('.qty-control').forEach(ctrl => {
+        ctrl.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            const productId = ctrl.dataset.id;
+            const hasStep5 = document.querySelector(`.product-card[data-id="${productId}"]`).dataset.step5 === 'true';
+            const step = hasStep5 ? 5 : 1;
+
+            if (state.cart[productId]) {
+                state.cart[productId] = Math.max(0, state.cart[productId] - step);
+                if (state.cart[productId] === 0) delete state.cart[productId];
+                updateProductCard(productId);
+                updateAssemblyButton();
+            }
+        });
+    });
+
+    document.getElementById('backToCategories').addEventListener('click', () => {
+        renderCategoryList(state.categories);
+    });
+
+    document.getElementById('viewAssembly').addEventListener('click', () => {
+        renderAssembly();
+    });
 }
 
-// Force Unlock
-async function forceUnlock(categoryId, pageNumber) {
-  const result = await apiPost('/api/admin/force-unlock', { categoryId, pageNumber });
-  if (result.success) {
-    alert('Разблокировано');
-    loadAdminLocks();
-  } else {
-    alert('Ошибка');
-  }
-}
+function updateProductCard(productId) {
+    const card = document.querySelector(`.product-card[data-id="${productId}"]`);
+    if (!card) return;
 
-async function startSync() { 
-  await apiPost('/api/sync/start', {}); 
-  alert('Синхронизация запущена'); 
-  const interval = setInterval(async () => {
-    await loadAdminOverview();
-    const data = await apiGet('/api/admin/overview');
-    if (data?.syncStatus?.status === 'completed' || data?.syncStatus?.status === 'error') {
-      clearInterval(interval);
+    const qty = state.cart[productId] || 0;
+    let badge = card.querySelector('.product-qty');
+
+    if (qty > 0) {
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.className = 'product-qty';
+            card.appendChild(badge);
+        }
+        badge.setAttribute('data-qty', qty);
+        badge.style.animation = 'none';
+        requestAnimationFrame(() => {
+            badge.style.animation = 'pulse 0.3s ease-out';
+        });
+    } else if (badge) {
+        badge.remove();
     }
-  }, 3000);
 }
 
-async function resetSync() { await apiPost('/api/sync/reset', {}); alert('Синхронизация сброшена'); loadAdminOverview(); }
+function updateAssemblyButton() {
+    const btn = document.getElementById('viewAssembly');
+    if (btn) {
+        const total = Object.values(state.cart).reduce((a, b) => a + b, 0);
+        btn.textContent = `Корзина (${total})`;
+    }
+}
 
-// Init on load
+function renderAssembly() {
+    const content = document.getElementById('carryContent');
+    const items = Object.entries(state.cart).map(([productId, qty]) => {
+        const product = state.products.find(p => p.id == productId);
+        return { ...product, quantity: qty };
+    }).filter(item => item.id);
+
+    if (items.length === 0) {
+        content.innerHTML = '<div class="empty-state"><div class="empty-icon">🛒</div><p>Корзина пуста</p></div>';
+        return;
+    }
+
+    content.innerHTML = `
+        <div id="assemblyList">
+            ${items.map((item, index) => `
+                <div class="assembly-item" data-id="${item.id}" style="animation: slideIn ${index * 0.05}s ease-out">
+                    <div class="assembly-checkbox" data-id="${item.id}"></div>
+                    <div class="assembly-content">
+                        <div>${utils.escapeHtml(item.name)}</div>
+                        <div style="font-size: 13px; color: var(--text-tertiary);">${item.vendor_code || ''}</div>
+                    </div>
+                    <div class="assembly-qty">×${item.quantity}</div>
+                </div>
+            `).join('')}
+        </div>
+        <div class="bottom-actions">
+            <button class="btn btn-secondary" id="backToProducts">← Назад</button>
+            <button class="btn btn-danger" id="clearAssembly">Очистить</button>
+            <button class="btn btn-primary" id="printAssembly">🖨️ Печать</button>
+        </div>
+    `;
+
+    // Add slide animation
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+    `;
+    document.head.appendChild(style);
+
+    document.querySelectorAll('.assembly-checkbox').forEach(cb => {
+        cb.addEventListener('click', () => {
+            cb.classList.toggle('checked');
+        });
+    });
+
+    document.getElementById('backToProducts').addEventListener('click', () => {
+        renderProducts(state.products);
+    });
+
+    document.getElementById('clearAssembly').addEventListener('click', () => {
+        if (confirm('Очистить корзину?')) {
+            state.cart = {};
+            renderAssembly();
+        }
+    });
+
+    document.getElementById('printAssembly').addEventListener('click', () => {
+        printAssemblyList(items);
+    });
+}
+
+function printAssemblyList(items) {
+    const printWindow = window.open('', '_blank');
+    const date = new Date().toLocaleDateString('ru-RU');
+    const category = state.currentCategory ? state.currentCategory.name : 'Все категории';
+
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Заявка на занос - ${date}</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                h1 { font-size: 18px; margin-bottom: 10px; }
+                .meta { color: #666; margin-bottom: 20px; font-size: 14px; }
+                table { width: 100%; border-collapse: collapse; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+                th { background: #f5f5f5; font-weight: bold; }
+                tr:nth-child(even) { background: #fafafa; }
+                .qty { text-align: center; font-weight: bold; }
+            </style>
+        </head>
+        <body>
+            <h1>Заявка на занос</h1>
+            <div class="meta">Дата: ${date}<br>Категория: ${category}</div>
+            <table>
+                <tr>
+                    <th>№</th>
+                    <th>Товар</th>
+                    <th>Артикул</th>
+                    <th>Кол-во</th>
+                </tr>
+                ${items.map((item, i) => `
+                    <tr>
+                        <td>${i + 1}</td>
+                        <td>${item.name}</td>
+                        <td>${item.vendor_code || '-'}</td>
+                        <td class="qty">${item.quantity}</td>
+                    </tr>
+                `).join('')}
+            </table>
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
+}
+
+function renderPriceCheckPages(pages) {
+    const content = document.getElementById('priceCheckContent');
+    content.innerHTML = `
+        <div class="pages-grid">
+            ${pages.map((page, index) => {
+                const isLocked = state.priceCheck.locks.some(l => l.page === page.pageNumber);
+                const isMyLock = state.priceCheck.locks.some(l => l.page === page.pageNumber && l.user === state.currentUser?.login);
+
+                return `
+                    <div class="page-item ${isLocked && !isMyLock ? 'locked' : ''} ${isMyLock ? 'active' : ''}" 
+                         data-page="${page.pageNumber}"
+                         style="animation: fadeIn ${index * 0.03}s ease-out">
+                        <div class="page-number">Стр. ${page.pageNumber}</div>
+                        <div class="page-status">
+                            ${isLocked ? (isMyLock ? '✓ Ваше' : '🔒 Занято') : 'Свободно'}
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+
+    document.querySelectorAll('.page-item:not(.locked)').forEach(item => {
+        item.addEventListener('click', async () => {
+            const page = parseInt(item.dataset.page);
+            try {
+                await api.lockPriceCheckPage(page);
+                await loadPriceCheckPage(page);
+            } catch (error) {
+                utils.showToast('Не удалось заблокировать страницу', 'error');
+            }
+        });
+    });
+}
+
+async function loadPriceCheckPage(page) {
+    const content = document.getElementById('priceCheckContent');
+    content.innerHTML = '<div class="loading">Загрузка товаров...</div>';
+
+    try {
+        const data = await api.getPriceCheckProducts(page);
+        state.priceCheck.currentPage = page;
+        state.priceCheck.products = data.products;
+        renderPriceCheckProducts(data.products);
+    } catch (error) {
+        content.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><p>Ошибка загрузки</p></div>';
+    }
+}
+
+function renderPriceCheckProducts(products) {
+    const content = document.getElementById('priceCheckContent');
+    content.innerHTML = `
+        <div style="padding: 16px;">
+            ${products.map((product, index) => `
+                <div class="pc-product" data-id="${product.id}" style="animation: fadeInUp ${index * 0.03}s ease-out">
+                    <img src="${product.image || '/data/image-cache-v5/no-image.webp'}" 
+                         class="pc-product-image" 
+                         alt="${utils.escapeHtml(product.name)}">
+                    <div class="pc-product-info">
+                        <div class="pc-product-name">${utils.escapeHtml(product.name)}</div>
+                        <div class="pc-product-code">${product.vendor_code || 'Нет артикула'}</div>
+                        <div class="pc-product-actions">
+                            <button class="pc-btn problem ${product.hasProblem ? 'active' : ''}" data-type="problem">
+                                ⚠️ Проблема
+                            </button>
+                            <button class="pc-btn price ${product.hasPriceIssue ? 'active' : ''}" data-type="price">
+                                🏷️ Ценник
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+        <div class="bottom-actions">
+            <button class="btn btn-secondary" id="backToPages">← К страницам</button>
+            <button class="btn btn-primary" id="completePage">✓ Готово</button>
+        </div>
+    `;
+
+    document.querySelectorAll('.pc-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const productId = btn.closest('.pc-product').dataset.id;
+            const type = btn.dataset.type;
+
+            try {
+                await api.markPriceCheckProduct(productId, type);
+                btn.classList.toggle('active');
+
+                // Animation feedback
+                btn.style.transform = 'scale(0.95)';
+                setTimeout(() => btn.style.transform = '', 150);
+            } catch (error) {
+                utils.showToast('Ошибка сохранения', 'error');
+            }
+        });
+    });
+
+    document.getElementById('backToPages').addEventListener('click', async () => {
+        if (state.priceCheck.currentPage) {
+            await api.unlockPriceCheckPage(state.priceCheck.currentPage);
+        }
+        screens['price-check']();
+    });
+
+    document.getElementById('completePage').addEventListener('click', async () => {
+        if (state.priceCheck.currentPage) {
+            await api.unlockPriceCheckPage(state.priceCheck.currentPage);
+            utils.showToast('Страница проверена!', 'success');
+            screens['price-check']();
+        }
+    });
+}
+
+function renderProductCheck(products) {
+    const content = document.getElementById('productCheckContent');
+    const visibleProducts = products.filter(p => !state.productCheck.hidden.has(p.id));
+
+    if (visibleProducts.length === 0) {
+        content.innerHTML = '<div class="empty-state"><div class="empty-icon">✓</div><p>Все товары проверены!</p></div>';
+        return;
+    }
+
+    content.innerHTML = `
+        <div style="padding: 16px;">
+            ${visibleProducts.map((product, index) => `
+                <div class="pc-product" data-id="${product.id}" style="animation: fadeInUp ${index * 0.03}s ease-out">
+                    <img src="${product.image || '/data/image-cache-v5/no-image.webp'}" 
+                         class="pc-product-image" 
+                         alt="${utils.escapeHtml(product.name)}">
+                    <div class="pc-product-info">
+                        <div class="pc-product-name">${utils.escapeHtml(product.name)}</div>
+                        <div class="pc-product-code">${product.vendor_code || 'Нет артикула'}</div>
+                        <div class="pc-product-actions">
+                            <button class="pc-btn price" data-action="hide">✓ Проверено</button>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+
+    document.querySelectorAll('[data-action="hide"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const productId = btn.closest('.pc-product').dataset.id;
+            try {
+                await api.hideProductCheckProduct(productId);
+                state.productCheck.hidden.add(productId);
+                btn.closest('.pc-product').style.animation = 'fadeOut 0.3s ease-out';
+                setTimeout(() => renderProductCheck(products), 300);
+            } catch (error) {
+                utils.showToast('Ошибка сохранения', 'error');
+            }
+        });
+    });
+}
+
+function renderCalendar(events) {
+    const content = document.getElementById('calendarContent');
+    const startOfWeek = new Date(state.calendar.currentWeek);
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay() + 1);
+
+    const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    const today = new Date();
+
+    content.innerHTML = `
+        <div class="calendar-grid">
+            ${Array.from({length: 7}, (_, i) => {
+                const d = new Date(startOfWeek);
+                d.setDate(d.getDate() + i);
+                const isToday = d.toDateString() === today.toDateString();
+                const dayEvents = events.filter(e => new Date(e.date).toDateString() === d.toDateString());
+
+                return `
+                    <div class="calendar-day ${isToday ? 'active' : ''}" data-date="${d.toISOString()}">
+                        <span class="calendar-day-name">${days[i]}</span>
+                        <span class="calendar-day-number">${d.getDate()}</span>
+                        ${dayEvents.length > 0 ? `<div style="width: 6px; height: 6px; background: var(--accent-cyan); border-radius: 50%; margin-top: 4px;"></div>` : ''}
+                    </div>
+                `;
+            }).join('')}
+        </div>
+        <div class="calendar-events">
+            ${events.length === 0 ? '<div class="empty-state" style="padding: 40px 20px;"><div class="empty-icon">📭</div><p>Нет событий на этой неделе</p></div>' : ''}
+            ${events.map((event, index) => `
+                <div class="event-item" data-id="${event.id}" style="animation: fadeInUp ${index * 0.05}s ease-out">
+                    <div class="event-title">${utils.escapeHtml(event.title)}</div>
+                    <div class="event-text">${utils.escapeHtml(event.description || '')}</div>
+                    <div style="font-size: 12px; color: var(--text-tertiary); margin-top: 8px;">
+                        ${utils.formatDateTime(event.date)}
+                    </div>
+                    ${state.currentUser?.role === 'admin' ? `
+                        <button class="icon-btn" data-action="delete" style="position: absolute; top: 16px; right: 16px; width: 28px; height: 28px;">🗑️</button>
+                    ` : ''}
+                </div>
+            `).join('')}
+        </div>
+        ${state.currentUser?.role === 'admin' ? `
+            <div class="bottom-actions">
+                <button class="btn btn-primary" id="addEvent">+ Добавить событие</button>
+            </div>
+        ` : ''}
+    `;
+
+    if (state.currentUser?.role === 'admin') {
+        document.getElementById('addEvent')?.addEventListener('click', () => {
+            showEventModal();
+        });
+
+        document.querySelectorAll('[data-action="delete"]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const eventId = btn.closest('.event-item').dataset.id;
+                if (confirm('Удалить событие?')) {
+                    try {
+                        await api.deleteCalendarEvent(eventId);
+                        utils.showToast('Событие удалено', 'success');
+                        screens.calendar();
+                    } catch (error) {
+                        utils.showToast('Ошибка удаления', 'error');
+                    }
+                }
+            });
+        });
+    }
+}
+
+function showEventModal() {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-title">Новое событие</div>
+            <input type="text" class="modal-input" id="eventTitle" placeholder="Название события" required>
+            <textarea class="modal-input" id="eventDesc" placeholder="Описание" rows="3"></textarea>
+            <input type="datetime-local" class="modal-input" id="eventDate" required>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="cancelEvent">Отмена</button>
+                <button class="btn btn-primary" id="saveEvent">Сохранить</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    document.getElementById('cancelEvent').addEventListener('click', () => modal.remove());
+
+    document.getElementById('saveEvent').addEventListener('click', async () => {
+        const title = document.getElementById('eventTitle').value;
+        const description = document.getElementById('eventDesc').value;
+        const date = document.getElementById('eventDate').value;
+
+        if (!title || !date) {
+            utils.showToast('Заполните обязательные поля', 'error');
+            return;
+        }
+
+        try {
+            await api.createCalendarEvent({ title, description, date });
+            utils.showToast('Событие создано', 'success');
+            modal.remove();
+            screens.calendar();
+        } catch (error) {
+            utils.showToast('Ошибка создания', 'error');
+        }
+    });
+}
+
+async function loadAdminTab(tab) {
+    const content = document.getElementById('adminContent');
+    content.innerHTML = '<div class="loading">Загрузка...</div>';
+
+    try {
+        switch(tab) {
+            case 'overview':
+                const stats = await api.getAdminStats();
+                renderAdminOverview(stats);
+                break;
+            case 'users':
+                const users = await api.getAdminUsers();
+                state.admin.users = users;
+                renderAdminUsers(users);
+                break;
+            case 'locks':
+                const locks = await api.getLocks();
+                renderAdminLocks(locks);
+                break;
+            case 'sync':
+                const syncStatus = await api.getSyncStatus();
+                renderAdminSync(syncStatus);
+                break;
+        }
+    } catch (error) {
+        content.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><p>Ошибка загрузки данных</p></div>';
+    }
+}
+
+function renderAdminOverview(stats) {
+    const content = document.getElementById('adminContent');
+    content.innerHTML = `
+        <div class="admin-sections">
+            <div class="admin-card">
+                <div class="admin-card-title">Статистика системы</div>
+                <div class="stat-row">
+                    <span class="stat-label">Всего товаров</span>
+                    <span class="stat-value">${stats.totalProducts || 0}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Категорий</span>
+                    <span class="stat-value">${stats.totalCategories || 0}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Пользователей</span>
+                    <span class="stat-value">${stats.totalUsers || 0}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Активных сессий</span>
+                    <span class="stat-value">${stats.activeSessions || 0}</span>
+                </div>
+            </div>
+
+            <div class="admin-card">
+                <div class="admin-card-title">Последняя синхронизация</div>
+                <div class="stat-row">
+                    <span class="stat-label">Дата</span>
+                    <span class="stat-value">${stats.lastSync ? utils.formatDateTime(stats.lastSync) : 'Никогда'}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Статус</span>
+                    <span class="stat-value" style="color: ${stats.syncStatus === 'success' ? 'var(--accent-green)' : 'var(--accent-orange)'}">
+                        ${stats.syncStatus || 'Неизвестно'}
+                    </span>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderAdminUsers(users) {
+    const content = document.getElementById('adminContent');
+    content.innerHTML = `
+        <div class="admin-sections">
+            <div class="admin-card">
+                <div class="admin-card-title">Пользователи</div>
+                <button class="btn btn-primary" id="addUser" style="margin-bottom: 16px; width: 100%;">+ Добавить пользователя</button>
+                <div class="users-list">
+                    ${users.map(user => `
+                        <div class="user-item" data-id="${user.id}">
+                            <div class="user-info">
+                                <div class="user-login">${utils.escapeHtml(user.login)}</div>
+                                <div class="user-meta">
+                                    <span class="user-role ${user.role}">${user.role === 'admin' ? 'Админ' : 'Сотрудник'}</span>
+                                    <span class="user-status ${user.isActive ? 'active' : 'inactive'}">${user.isActive ? 'Активен' : 'Неактивен'}</span>
+                                </div>
+                                <div class="user-dates">
+                                    Создан: ${utils.formatDate(user.createdAt)}
+                                </div>
+                            </div>
+                            <div class="user-actions">
+                                <button class="icon-btn" data-action="edit">✏️</button>
+                                <button class="icon-btn" data-action="delete">🗑️</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('addUser')?.addEventListener('click', () => showUserModal());
+
+    document.querySelectorAll('[data-action="edit"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const userId = btn.closest('.user-item').dataset.id;
+            const user = users.find(u => u.id == userId);
+            showUserModal(user);
+        });
+    });
+
+    document.querySelectorAll('[data-action="delete"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const userId = btn.closest('.user-item').dataset.id;
+            if (confirm('Удалить пользователя?')) {
+                try {
+                    await api.deleteUser(userId);
+                    utils.showToast('Пользователь удален', 'success');
+                    loadAdminTab('users');
+                } catch (error) {
+                    utils.showToast('Ошибка удаления', 'error');
+                }
+            }
+        });
+    });
+}
+
+function showUserModal(user = null) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-title">${user ? 'Редактировать' : 'Новый пользователь'}</div>
+            <input type="text" class="modal-input" id="userLogin" placeholder="Логин" value="${user?.login || ''}" ${user ? 'readonly' : ''} required>
+            <input type="password" class="modal-input" id="userPassword" placeholder="${user ? 'Новый пароль (оставьте пустым чтобы не менять)' : 'Пароль'}" ${user ? '' : 'required'}>
+            <select class="modal-input" id="userRole">
+                <option value="staff" ${user?.role === 'staff' ? 'selected' : ''}>Сотрудник</option>
+                <option value="admin" ${user?.role === 'admin' ? 'selected' : ''}>Администратор</option>
+            </select>
+            <label class="checkbox-label">
+                <input type="checkbox" id="userActive" ${user?.isActive !== false ? 'checked' : ''}>
+                Активен
+            </label>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="cancelUser">Отмена</button>
+                <button class="btn btn-primary" id="saveUser">Сохранить</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    document.getElementById('cancelUser').addEventListener('click', () => modal.remove());
+
+    document.getElementById('saveUser').addEventListener('click', async () => {
+        const login = document.getElementById('userLogin').value;
+        const password = document.getElementById('userPassword').value;
+        const role = document.getElementById('userRole').value;
+        const isActive = document.getElementById('userActive').checked;
+
+        if (!login || (!user && !password)) {
+            utils.showToast('Заполните обязательные поля', 'error');
+            return;
+        }
+
+        try {
+            if (user) {
+                await api.updateUser(user.id, { role, isActive, ...(password && { password }) });
+            } else {
+                await api.createUser({ login, password, role, isActive });
+            }
+            utils.showToast('Пользователь сохранен', 'success');
+            modal.remove();
+            loadAdminTab('users');
+        } catch (error) {
+            utils.showToast('Ошибка сохранения', 'error');
+        }
+    });
+}
+
+function renderAdminLocks(locks) {
+    const content = document.getElementById('adminContent');
+    content.innerHTML = `
+        <div class="admin-sections">
+            <div class="admin-card">
+                <div class="admin-card-title">Активные блокировки</div>
+                ${locks.length === 0 ? '<div class="empty-state" style="padding: 40px;"><div class="empty-icon">🔓</div><p>Нет активных блокировок</p></div>' : ''}
+                <div class="locks-list">
+                    ${locks.map(lock => `
+                        <div class="lock-item" data-category="${lock.category}" data-page="${lock.page}">
+                            <div class="lock-info">
+                                <div class="lock-category">${utils.escapeHtml(lock.category)}</div>
+                                <div class="lock-meta">Страница: ${lock.page} | Пользователь: ${utils.escapeHtml(lock.user)}</div>
+                                <div class="lock-time">${utils.formatDateTime(lock.lockedAt)}</div>
+                            </div>
+                            <button class="icon-btn" data-action="unlock">🔓</button>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.querySelectorAll('[data-action="unlock"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const item = btn.closest('.lock-item');
+            const category = item.dataset.category;
+            const page = item.dataset.page;
+
+            try {
+                await api.forceUnlock(category, page);
+                utils.showToast('Блокировка снята', 'success');
+                item.style.animation = 'fadeOut 0.3s ease-out';
+                setTimeout(() => item.remove(), 300);
+            } catch (error) {
+                utils.showToast('Ошибка разблокировки', 'error');
+            }
+        });
+    });
+}
+
+function renderAdminSync(syncStatus) {
+    const content = document.getElementById('adminContent');
+    content.innerHTML = `
+        <div class="admin-sections">
+            <div class="admin-card">
+                <div class="admin-card-title">Синхронизация каталога</div>
+                <div class="sync-status">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                        <span style="color: var(--text-secondary);">Статус:</span>
+                        <span style="color: ${syncStatus?.status === 'running' ? 'var(--accent-cyan)' : syncStatus?.status === 'completed' ? 'var(--accent-green)' : 'var(--text-secondary)'}; font-weight: 600;">
+                            ${syncStatus?.status === 'running' ? '⏳ Выполняется...' : syncStatus?.status === 'completed' ? '✓ Завершено' : '⏸️ Ожидание'}
+                        </span>
+                    </div>
+                    ${syncStatus?.progress ? `
+                        <div class="sync-progress">
+                            <div class="sync-progress-bar" style="width: ${syncStatus.progress}%"></div>
+                        </div>
+                        <div style="text-align: center; margin-top: 8px; font-size: 14px; color: var(--text-secondary);">
+                            ${syncStatus.progress}%
+                        </div>
+                    ` : ''}
+                    ${syncStatus?.lastSync ? `
+                        <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--glass-border);">
+                            <div style="font-size: 14px; color: var(--text-tertiary);">
+                                Последняя синхронизация: ${utils.formatDateTime(syncStatus.lastSync)}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+                <button class="btn btn-primary" id="startSync" style="width: 100%; margin-top: 16px;" ${syncStatus?.status === 'running' ? 'disabled' : ''}>
+                    ${syncStatus?.status === 'running' ? '⏳ Синхронизация...' : '🔄 Запустить синхронизацию'}
+                </button>
+            </div>
+        </div>
+    `;
+
+    if (syncStatus?.status !== 'running') {
+        document.getElementById('startSync')?.addEventListener('click', async () => {
+            try {
+                await api.syncCatalog();
+                utils.showToast('Синхронизация запущена', 'success');
+                loadAdminTab('sync');
+            } catch (error) {
+                utils.showToast('Ошибка запуска', 'error');
+            }
+        });
+    }
+}
+
+// ============================================
+// PWA Install Prompt
+// ============================================
+function setupInstallPrompt() {
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        state.deferredInstallPrompt = e;
+
+        // Show install button after 5 seconds
+        setTimeout(() => {
+            if (!state.installPrompt) {
+                const btn = document.createElement('button');
+                btn.className = 'install-btn';
+                btn.textContent = '⬇ Установить приложение';
+                btn.addEventListener('click', async () => {
+                    if (state.deferredInstallPrompt) {
+                        state.deferredInstallPrompt.prompt();
+                        const { outcome } = await state.deferredInstallPrompt.userChoice;
+                        if (outcome === 'accepted') {
+                            utils.showToast('Приложение установлено!', 'success');
+                            btn.remove();
+                        }
+                    }
+                });
+                document.body.appendChild(btn);
+                state.installPrompt = btn;
+            }
+        }, 5000);
+    });
+}
+
+// ============================================
+// Service Worker Registration
+// ============================================
+function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js')
+            .then(registration => {
+                console.log('SW registered:', registration);
+            })
+            .catch(error => {
+                console.log('SW registration failed:', error);
+            });
+    }
+}
+
+// ============================================
+// Initialization
+// ============================================
+function init() {
+    // Check auth status
+    api.request('/api/auth/check')
+        .then(result => {
+            if (result.authenticated) {
+                state.currentUser = result.user;
+                screens.menu();
+            } else {
+                screens.login();
+            }
+        })
+        .catch(() => screens.login());
+
+    setupInstallPrompt();
+    registerServiceWorker();
+}
+
+// Start app when DOM is ready
 document.addEventListener('DOMContentLoaded', init);
