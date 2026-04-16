@@ -1,0 +1,13 @@
+spec: "v1.0"
+name: zan11
+static: false
+build:
+  type: nodejs
+  version: "20"
+  command: npm install
+run:
+  command: npm start
+  persistenceMount: /data
+  ports:
+    - port: 3000
+      httpSupport: true
