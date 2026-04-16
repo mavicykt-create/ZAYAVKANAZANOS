@@ -1,44 +1,117 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Минимальный сайт</title>
-  <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #f5f5f5;
-      color: #111;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-    }
-    .box {
-      background: white;
-      padding: 24px;
-      border-radius: 16px;
-      box-shadow: 0 8px 30px rgba(0,0,0,0.08);
-      text-align: center;
-      max-width: 420px;
-      width: calc(100% - 32px);
-    }
-    h1 {
-      margin: 0 0 12px;
-      font-size: 24px;
-    }
-    p {
-      margin: 0;
-      color: #555;
-      line-height: 1.5;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Заказ</title>
+
+<style>
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f5f5f5;
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  background: white;
+  padding: 12px;
+  font-weight: bold;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 8px;
+}
+
+.card {
+  background: white;
+  border-radius: 12px;
+  padding: 8px;
+  text-align: center;
+  position: relative;
+  cursor: pointer;
+}
+
+.card img {
+  width: 100%;
+  height: 80px;
+  object-fit: contain;
+}
+
+.qty {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: black;
+  color: white;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+</style>
 </head>
+
 <body>
-  <div class="box">
-    <h1>Сайт работает</h1>
-    <p>Это минимальная тестовая страница без лишней логики.</p>
-  </div>
+
+<div class="header">
+  Товаров в корзине: <span id="total">0</span>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<script>
+const products = [
+  { id: 1, name: "Snickers", img: "https://via.placeholder.com/100" },
+  { id: 2, name: "Mars", img: "https://via.placeholder.com/100" },
+  { id: 3, name: "KitKat", img: "https://via.placeholder.com/100" },
+  { id: 4, name: "Kinder", img: "https://via.placeholder.com/100" },
+  { id: 5, name: "Twix", img: "https://via.placeholder.com/100" },
+  { id: 6, name: "Bounty", img: "https://via.placeholder.com/100" },
+  { id: 7, name: "Milka", img: "https://via.placeholder.com/100" },
+  { id: 8, name: "Rafaello", img: "https://via.placeholder.com/100" }
+];
+
+const cart = {};
+
+const grid = document.getElementById("grid");
+const totalEl = document.getElementById("total");
+
+function render() {
+  grid.innerHTML = "";
+
+  let total = 0;
+
+  products.forEach(p => {
+    const qty = cart[p.id] || 0;
+    total += qty;
+
+    const div = document.createElement("div");
+    div.className = "card";
+
+    div.innerHTML = `
+      ${qty ? `<div class="qty">${qty}</div>` : ""}
+      <img src="${p.img}">
+      <div>${p.name}</div>
+    `;
+
+    div.onclick = () => {
+      cart[p.id] = (cart[p.id] || 0) + 1;
+      render();
+    };
+
+    grid.appendChild(div);
+  });
+
+  totalEl.textContent = total;
+}
+
+render();
+</script>
+
 </body>
 </html>
