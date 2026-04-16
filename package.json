@@ -1,0 +1,21 @@
+{
+  "name": "zan-1.1",
+  "version": "1.1.0",
+  "description": "ZAN 1.1 warehouse/store staff web service",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "seed": "node src/seed.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.10.0",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.2",
+    "sharp": "^0.34.1",
+    "web-push": "^3.6.7",
+    "xml2js": "^0.6.2"
+  }
+}
