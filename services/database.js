@@ -30,7 +30,7 @@ function initDB() {
     )
   `);
 
-  // Products table
+  // Products table - добавляем поля для картинок
   db.exec(`
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -170,9 +170,9 @@ function initDB() {
   const adminHash = bcrypt.hashSync('7895123', 10);
   const userHash = bcrypt.hashSync('7895123', 10);
 
-  db.prepare(`INSERT OR IGNORE INTO users (id, login, password_hash, role, is_active)
+  db.prepare(`INSERT OR IGNORE INTO users (id, login, password_hash, role, is_active) 
     VALUES (1, 'admin', ?, 'admin', 1)`).run(adminHash);
-  db.prepare(`INSERT OR IGNORE INTO users (id, login, password_hash, role, is_active)
+  db.prepare(`INSERT OR IGNORE INTO users (id, login, password_hash, role, is_active) 
     VALUES (2, 'user', ?, 'staff', 1)`).run(userHash);
 
   // Init sync status

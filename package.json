@@ -1,7 +1,7 @@
 {
-  "name": "zan11-modern",
+  "name": "zan11",
   "version": "1.1.0",
-  "description": "ZAN 1.1 - Warehouse Management System with Modern Design",
+  "description": "ZAN 1.1 - Warehouse Management System",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

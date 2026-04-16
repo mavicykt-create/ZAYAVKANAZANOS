@@ -24,7 +24,7 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'zan11-secret-key-2024',
   resave: false,
   saveUninitialized: false,
-  cookie: {
+  cookie: { 
     secure: false,
     maxAge: 24 * 60 * 60 * 1000
   }

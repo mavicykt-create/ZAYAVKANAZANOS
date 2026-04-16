@@ -51,7 +51,7 @@ async function downloadImage(imageUrl, filename) {
       fs.mkdirSync(IMAGE_CACHE, { recursive: true });
     }
 
-    const response = await fetch(imageUrl, {
+    const response = await fetch(imageUrl, { 
       timeout: 15000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -69,9 +69,9 @@ async function downloadImage(imageUrl, filename) {
     }
 
     const compressed = await sharp(buffer)
-      .resize(120, 120, {
+      .resize(120, 120, { 
         fit: 'cover',
-        withoutEnlargement: true
+        withoutEnlargement: true 
       })
       .webp({ quality: 25, effort: 4 })
       .toBuffer();
@@ -90,7 +90,7 @@ async function syncCatalog() {
   updateStatus('running', 0, 'download', 'Загрузка YML...');
 
   try {
-    const response = await fetch(YML_URL, {
+    const response = await fetch(YML_URL, { 
       timeout: 120000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -116,8 +116,8 @@ async function syncCatalog() {
     db.prepare('DELETE FROM products').run();
 
     const insertProduct = db.prepare(`
-      INSERT INTO products (external_id, category_id, name, vendor_code, picture,
-        picture_original, description, price, barcode, stock_quantity)
+      INSERT INTO products (external_id, category_id, name, vendor_code, picture, 
+                           picture_original, description, price, barcode, stock_quantity)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
@@ -125,6 +125,7 @@ async function syncCatalog() {
     let withImages = 0;
     const validCategoryIds = Object.keys(CATEGORY_MAP).map(Number);
 
+    // Фильтруем только нужные категории
     const filteredOffers = offers.filter(offer => {
       const categoryId = parseInt(offer.categoryId[0]);
       return validCategoryIds.includes(categoryId);
@@ -156,20 +157,21 @@ async function syncCatalog() {
       }
 
       insertProduct.run(
-        externalId, categoryId, name, vendorCode,
+        externalId, categoryId, name, vendorCode, 
         localPicture, pictureOriginal, description, price, barcode, stock
       );
 
       processed++;
 
+      // Обновляем прогресс каждые 5 товаров
       if (processed % 5 === 0 || processed === totalToProcess) {
         const progress = 20 + Math.floor((processed / totalToProcess) * 75);
-        updateStatus('running', progress, 'process',
+        updateStatus('running', progress, 'process', 
           `Обработано ${processed}/${totalToProcess} (${withImages} с фото)`, processed);
       }
     }
 
-    updateStatus('completed', 100, 'done',
+    updateStatus('completed', 100, 'done', 
       `Готово! ${processed} товаров, ${withImages} с фото`, processed);
     console.log(`Sync completed. ${processed} products, ${withImages} with images.`);
 
