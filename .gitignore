@@ -1,0 +1,7 @@
+node_modules/
+data/*.db
+data/image-cache-v5/*
+!data/image-cache-v5/.gitkeep
+.env
+.DS_Store
+*.log
