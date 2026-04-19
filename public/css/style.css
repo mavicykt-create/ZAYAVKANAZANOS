@@ -1,0 +1,2624 @@
+/* ═══════════════════════════════════════════════════════════════
+   ZAN Warehouse PWA — Gen Z Dark Theme
+   Neon accents • Glassmorphism • Smooth animations
+   Version: 2.0
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 1. CSS VARIABLES ───────────────────────────────────────── */
+:root {
+  /* Фоновые цвета — тёмная палитра с глубиной */
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #12121a;
+  --bg-tertiary: #1a1a25;
+  --bg-elevated: #22222f;
+  --bg-glass: rgba(255, 255, 255, 0.05);
+
+  /* Неоновые акценты — яркие, насыщенные */
+  --neon-purple: #a855f7;
+  --neon-pink: #ec4899;
+  --neon-cyan: #06b6d4;
+  --neon-blue: #3b82f6;
+  --neon-green: #22c55e;
+  --neon-yellow: #eab308;
+  --neon-red: #ef4444;
+  --neon-orange: #f97316;
+
+  /* Текстовые цвета — иерархия через яркость */
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  /* Градиенты — плавные переходы между неоновыми цветами */
+  --gradient-primary: linear-gradient(135deg, #a855f7, #ec4899);
+  --gradient-cyan: linear-gradient(135deg, #06b6d4, #3b82f6);
+  --gradient-green: linear-gradient(135deg, #22c55e, #10b981);
+  --gradient-warm: linear-gradient(135deg, #f97316, #eab308);
+  --gradient-card: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, transparent 100%);
+
+  /* Тени — глубина для карточек и neon glow */
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-card-hover: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --shadow-glow-purple: 0 0 20px rgba(168, 85, 247, 0.4), 0 0 60px rgba(168, 85, 247, 0.15);
+  --shadow-glow-pink: 0 0 20px rgba(236, 72, 153, 0.4), 0 0 60px rgba(236, 72, 153, 0.15);
+  --shadow-glow-cyan: 0 0 20px rgba(6, 182, 212, 0.4), 0 0 60px rgba(6, 182, 212, 0.15);
+  --shadow-glow-green: 0 0 20px rgba(34, 197, 94, 0.4), 0 0 60px rgba(34, 197, 94, 0.15);
+  --shadow-glow-red: 0 0 20px rgba(239, 68, 68, 0.4), 0 0 60px rgba(239, 68, 68, 0.15);
+  --shadow-glow-yellow: 0 0 20px rgba(234, 179, 8, 0.4), 0 0 60px rgba(234, 179, 8, 0.15);
+  --shadow-glow-orange: 0 0 20px rgba(249, 115, 22, 0.4), 0 0 60px rgba(249, 115, 22, 0.15);
+
+  /* Скругления — последовательная шкала */
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
+  --radius-2xl: 28px;
+  --radius-full: 9999px;
+
+  /* iOS Safe Area — поддержка notch и home indicator */
+  --safe-top: max(16px, env(safe-area-inset-top));
+  --safe-bottom: max(16px, env(safe-area-inset-bottom));
+  --safe-left: env(safe-area-inset-left);
+  --safe-right: env(safe-area-inset-right);
+}
+
+/* ── 2. CSS RESET ───────────────────────────────────────────── */
+/* Конкретные селекторы вместо универсального * reset — лучшая производительность */
+html, body, h1, h2, h3, h4, h5, h6, p, ul, ol, li, figure, figcaption, blockquote,
+dl, dd, pre, table, fieldset, legend, input, textarea, button, select {
+  margin: 0;
+  padding: 0;
+}
+
+/* Border-box для всех элементов через наследование — более эффективно */
+html { box-sizing: border-box; }
+body { box-sizing: border-box; }
+*, ::before, ::after { box-sizing: inherit; }
+
+/* Убираем стандартный tap highlight на мобильных — кастомный feedback через :active */
+html { -webkit-tap-highlight-color: transparent; }
+
+/* ── 3. BASE STYLES ─────────────────────────────────────────── */
+html {
+  /* Тёмный фон приложения — основа Gen Z aesthetic */
+  background-color: var(--bg-primary);
+  /* Inter — современный гротеск, отлично читается на мобильных */
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  /* Плавная прокрутка для всего документа */
+  scroll-behavior: smooth;
+  /* Предотвращаем масштабирование при фокусе на input в iOS */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1.5;
+  /* Предотвращаем pull-to-refresh и overscroll на мобильных */
+  overscroll-behavior-y: contain;
+  /* Сглаживание шрифтов */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Корневой контейнер приложения — всегда минимум на весь экран */
+#app {
+  min-height: 100vh;
+  min-height: 100dvh; /* dynamic viewport height для мобильных */
+  position: relative;
+  background-color: var(--bg-primary);
+}
+
+/* Наследование шрифта для всех форм — консистентность */
+input, button, textarea, select {
+  font: inherit;
+  color: inherit;
+}
+
+/* Убираем обводку по умолчанию, оставляем доступную через focus-visible */
+input:focus, button:focus, textarea:focus, select:focus {
+  outline: none;
+}
+input:focus-visible, button:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 2px solid var(--neon-purple);
+  outline-offset: 2px;
+}
+
+/* Картинки — responsive по умолчанию */
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Списки — убираем маркеры, управляем через классы */
+ul, ol { list-style: none; }
+
+/* Ссылки — наследуем цвет, убираем подчёркивание */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ── 4. CUSTOM SCROLLBAR ────────────────────────────────────── */
+/* Тонкий, тёмный скроллбар в стиле приложения */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+/* Firefox */
+* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent; }
+
+/* ── 5. KEYFRAMES / ANIMATIONS ──────────────────────────────── */
+/* Все анимации hardware-accelerated: только transform и opacity */
+
+/* fadeInUp — плавное появление снизу, для контента при загрузке */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* fadeOut — быстрое исчезновение */
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* slideUp — bottom sheet выезжает снизу с spring-физикой */
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+/* slideDown — bottom sheet уезжает вниз */
+@keyframes slideDown {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+
+/* shimmer — эффект блика для skeleton loaders */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* pulse-glow — пульсирующий neon glow для акцентных элементов */
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.4), 0 0 60px rgba(168, 85, 247, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(168, 85, 247, 0.6), 0 0 90px rgba(168, 85, 247, 0.25);
+  }
+}
+
+@keyframes pulseGlowGreen {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.4), 0 0 60px rgba(34, 197, 94, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(34, 197, 94, 0.6), 0 0 90px rgba(34, 197, 94, 0.25);
+  }
+}
+
+@keyframes pulseGlowRed {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.4), 0 0 60px rgba(239, 68, 68, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(239, 68, 68, 0.6), 0 0 90px rgba(239, 68, 68, 0.25);
+  }
+}
+
+/* float — лёгкое парение для декоративных элементов (login bg) */
+@keyframes float {
+  0%, 100% { transform: translateY(0) scale(1); }
+  33% { transform: translateY(-20px) scale(1.02); }
+  66% { transform: translateY(10px) scale(0.98); }
+}
+
+@keyframes floatSlow {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(15px, -25px) scale(1.03); }
+  50% { transform: translate(-10px, -15px) scale(0.97); }
+  75% { transform: translate(20px, 5px) scale(1.01); }
+}
+
+/* scaleIn — появление через масштабирование, для модалок */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* slideIndicator — индикатор таба в bottom nav скользит */
+@keyframes slideIndicator {
+  from { transform: translateX(var(--indicator-from, 0)); }
+  to { transform: translateX(var(--indicator-to, 0)); }
+}
+
+/* spin — вращение для лоадеров */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ripple — эффект волны при клике */
+@keyframes ripple {
+  from {
+    transform: scale(0);
+    opacity: 0.6;
+  }
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+/* toastSlideUp — тост выезжает снизу */
+@keyframes toastSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) translateX(-50%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) translateX(-50%);
+  }
+}
+
+@keyframes toastSlideDown {
+  from {
+    opacity: 1;
+    transform: translateY(0) translateX(-50%);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(20px) translateX(-50%);
+  }
+}
+
+/* pulse — лёгкое пульсирование размера */
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+/* gradientShift — анимированное движение градиента */
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* ── 6. ANIMATION UTILITY CLASSES ───────────────────────────── */
+.anim-fade-in-up {
+  animation: fadeInUp 300ms ease-out forwards;
+}
+.anim-slide-up {
+  animation: slideUp 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.anim-scale-in {
+  animation: scaleIn 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.anim-fade-out {
+  animation: fadeOut 150ms ease-in forwards;
+}
+
+/* Stagger animation delays для списков */
+.stagger-1 { animation-delay: 50ms; }
+.stagger-2 { animation-delay: 100ms; }
+.stagger-3 { animation-delay: 150ms; }
+.stagger-4 { animation-delay: 200ms; }
+.stagger-5 { animation-delay: 250ms; }
+.stagger-6 { animation-delay: 300ms; }
+.stagger-7 { animation-delay: 350ms; }
+.stagger-8 { animation-delay: 400ms; }
+
+/* ── 7. LAYOUT ──────────────────────────────────────────────── */
+/* Обёртка приложения — отступ снизу для bottom nav */
+.app-shell {
+  padding-bottom: calc(72px + var(--safe-bottom));
+  min-height: 100vh;
+}
+
+/* Header — фиксированная шапка с glassmorphism */
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: var(--safe-top) 16px 14px;
+  background: rgba(10, 10, 15, 0.75);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background 200ms ease;
+}
+
+/* Заголовок экрана — крупный, жирный, с плотным tracking */
+.header-title {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+/* Eyebrow — маленькая надпись над заголовком, neon purple */
+.header-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--neon-purple);
+  margin-bottom: 2px;
+}
+
+/* Подзаголовок в хедере — приглушённый */
+.header-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* Кнопка в хедере (иконка) */
+.header-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  background: var(--bg-glass);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 200ms ease;
+  flex-shrink: 0;
+  color: var(--text-primary);
+  font-size: 18px;
+}
+.header-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: scale(1.05);
+}
+.header-btn:active {
+  transform: scale(0.95);
+}
+
+/* Отступ для контента под фиксированным header */
+.content-with-header {
+  padding-top: calc(var(--safe-top) + 60px);
+}
+
+/* ── 8. BOTTOM NAVIGATION ───────────────────────────────────── */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 8px 16px calc(8px + var(--safe-bottom));
+  background: rgba(10, 10, 15, 0.8);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Скользящий индикатор активного таба */
+.bottom-nav-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 25%;
+  height: 3px;
+  background: var(--gradient-primary);
+  border-radius: 0 0 var(--radius-full) var(--radius-full);
+  transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: var(--shadow-glow-purple);
+}
+
+.bottom-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 4px;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  transition: color 200ms ease;
+  position: relative;
+  min-height: 44px; /* Touch-friendly */
+}
+
+.bottom-nav-item .nav-icon {
+  font-size: 24px;
+  line-height: 1;
+  transition: transform 200ms ease, filter 200ms ease;
+}
+
+.bottom-nav-item:hover {
+  color: var(--text-secondary);
+}
+
+/* Активный таб — neon purple + glow */
+.bottom-nav-item.active {
+  color: var(--neon-purple);
+}
+.bottom-nav-item.active .nav-icon {
+  transform: translateY(-2px);
+  filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.6));
+}
+
+/* ── 9. BUTTONS ─────────────────────────────────────────────── */
+/* Базовая кнопка — крупная, удобная для пальца */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 1;
+  min-height: 52px;
+  padding: 12px 24px;
+  border-radius: var(--radius-full);
+  font-size: 16px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 200ms ease;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+  min-width: 44px; /* Touch target */
+}
+
+/* Ripple эффект через ::after */
+.btn::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 80px;
+  height: 80px;
+  margin: -40px 0 0 -40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  transform: scale(0);
+  opacity: 0;
+  pointer-events: none;
+}
+.btn:active::after {
+  animation: ripple 400ms ease-out;
+}
+
+/* Primary — градиент purple→pink с glow */
+.btn-primary {
+  background: var(--gradient-primary);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(168, 85, 247, 0.35);
+}
+.btn-primary:hover {
+  box-shadow: var(--shadow-glow-purple);
+  transform: translateY(-2px);
+}
+.btn-primary:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* Secondary — тёмная с тонкой рамкой */
+.btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-weight: 600;
+}
+.btn-secondary:hover {
+  background: var(--bg-elevated);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+.btn-secondary:active {
+  transform: scale(0.98);
+}
+
+/* Success — зелёный градиент */
+.btn-success {
+  background: var(--gradient-green);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(34, 197, 94, 0.35);
+}
+.btn-success:hover {
+  box-shadow: var(--shadow-glow-green);
+  transform: translateY(-2px);
+}
+.btn-success:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* Danger — красный с glow */
+.btn-danger {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.35);
+}
+.btn-danger:hover {
+  box-shadow: var(--shadow-glow-red);
+  transform: translateY(-2px);
+}
+.btn-danger:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* Warning — оранжево-жёлтый */
+.btn-warning {
+  background: var(--gradient-warm);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(249, 115, 22, 0.35);
+}
+.btn-warning:hover {
+  box-shadow: var(--shadow-glow-orange);
+  transform: translateY(-2px);
+}
+
+/* Cyan — бирюзово-синий */
+.btn-cyan {
+  background: var(--gradient-cyan);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.35);
+}
+.btn-cyan:hover {
+  box-shadow: var(--shadow-glow-cyan);
+  transform: translateY(-2px);
+}
+
+/* Small — компактная версия */
+.btn-small {
+  min-height: 40px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Icon button — круглая кнопка с иконкой */
+.btn-icon {
+  width: 48px;
+  height: 48px;
+  min-height: 48px;
+  padding: 0;
+  border-radius: var(--radius-full);
+  background: var(--bg-glass);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  font-size: 20px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 200ms ease;
+}
+.btn-icon:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 16px rgba(168, 85, 247, 0.2);
+  transform: scale(1.08);
+}
+.btn-icon:active {
+  transform: scale(0.92);
+}
+
+/* Large icon button */
+.btn-icon-lg {
+  width: 56px;
+  height: 56px;
+  font-size: 24px;
+}
+
+/* Button group — ряд кнопок */
+.btn-group {
+  display: flex;
+  gap: 10px;
+  padding: 16px;
+}
+.btn-group-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+/* Disabled state */
+.btn:disabled,
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-success:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* ── 10. CARDS ──────────────────────────────────────────────── */
+/* Базовая карточка — тёмная с тонким градиентным оверлеем */
+.card {
+  background: var(--bg-tertiary);
+  background-image: var(--gradient-card);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+  transition: all 200ms ease;
+  position: relative;
+  overflow: hidden;
+}
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+}
+
+/* Hover — подъём, усиление тени, glow рамки */
+.card-hover {
+  cursor: pointer;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+  border-color: rgba(168, 85, 247, 0.2);
+}
+.card-hover:active {
+  transform: translateY(0) scale(0.99);
+}
+
+/* Glass card — стеклянная морфизм карточка */
+.glass-card {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+}
+.glass-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+}
+
+/* Selected card — выделенная карточка (например, выбранная категория) */
+.card-selected {
+  border-color: rgba(168, 85, 247, 0.5);
+  box-shadow: var(--shadow-glow-purple);
+}
+
+/* ── 11. INPUTS ─────────────────────────────────────────────── */
+/* Базовый input — тёмный с тонкой рамкой */
+.input {
+  width: 100%;
+  min-height: 52px;
+  padding: 14px 16px;
+  background: var(--bg-tertiary);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 500;
+  transition: all 200ms ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.input::placeholder {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+/* Focus — neon purple border + glow */
+.input:focus {
+  border-color: var(--neon-purple);
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.15), 0 0 20px rgba(168, 85, 247, 0.1);
+  background: var(--bg-elevated);
+}
+
+/* Input с floating label */
+.input-floating-wrapper {
+  position: relative;
+}
+.input-floating-wrapper .input {
+  padding-top: 20px;
+  padding-bottom: 8px;
+}
+.input-floating-wrapper label {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 16px;
+  font-weight: 400;
+  pointer-events: none;
+  transition: all 200ms ease;
+}
+.input-floating-wrapper .input:focus + label,
+.input-floating-wrapper .input:not(:placeholder-shown) + label {
+  top: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--neon-purple);
+  letter-spacing: 0.02em;
+}
+
+/* Textarea */
+.textarea {
+  width: 100%;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  font-size: 16px;
+  transition: all 200ms ease;
+  outline: none;
+  min-height: 120px;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+/* Select */
+.select {
+  width: 100%;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  font-size: 16px;
+  transition: all 200ms ease;
+  outline: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2364748b' viewBox='0 0 16 16'%3E%3Cpath d='M4.646 5.646a.5.5 0 0 1 .708 0L8 8.293l2.646-2.647a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 40px;
+}
+
+/* Search input с иконкой */
+.input-search-wrapper {
+  position: relative;
+}
+.input-search-wrapper .input {
+  padding-left: 44px;
+}
+.input-search-wrapper .search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 18px;
+  pointer-events: none;
+}
+
+/* Input group — поле с кнопкой рядом */
+.input-group {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.input-group .input {
+  flex: 1;
+}
+.input-group .btn {
+  flex: none;
+}
+
+/* ── 12. BADGES ─────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.badge-purple {
+  background: rgba(168, 85, 247, 0.15);
+  color: var(--neon-purple);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+}
+.badge-green {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--neon-green);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+.badge-red {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--neon-red);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+.badge-cyan {
+  background: rgba(6, 182, 212, 0.15);
+  color: var(--neon-cyan);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+}
+.badge-orange {
+  background: rgba(249, 115, 22, 0.15);
+  color: var(--neon-orange);
+  border: 1px solid rgba(249, 115, 22, 0.2);
+}
+.badge-yellow {
+  background: rgba(234, 179, 8, 0.15);
+  color: var(--neon-yellow);
+  border: 1px solid rgba(234, 179, 8, 0.2);
+}
+.badge-muted {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ── 13. TOAST NOTIFICATIONS ────────────────────────────────── */
+.toast-container {
+  position: fixed;
+  bottom: calc(80px + var(--safe-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: calc(100% - 32px);
+  max-width: 400px;
+  pointer-events: none;
+}
+
+.toast {
+  background: var(--bg-elevated);
+  border-left: 4px solid var(--neon-purple);
+  border-radius: var(--radius-lg);
+  padding: 14px 18px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  pointer-events: auto;
+  animation: toastSlideUp 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  backdrop-filter: blur(10px);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.toast.hiding {
+  animation: toastSlideDown 200ms ease-in forwards;
+}
+
+.toast-success { border-left-color: var(--neon-green); }
+.toast-error   { border-left-color: var(--neon-red); }
+.toast-info    { border-left-color: var(--neon-purple); }
+.toast-warning { border-left-color: var(--neon-yellow); }
+
+.toast-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.toast-success .toast-icon { color: var(--neon-green); }
+.toast-error .toast-icon   { color: var(--neon-red); }
+.toast-info .toast-icon    { color: var(--neon-purple); }
+.toast-warning .toast-icon { color: var(--neon-yellow); }
+
+/* ── 14. SKELETON LOADER ────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 25%,
+    rgba(255, 255, 255, 0.05) 50%,
+    var(--bg-tertiary) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--radius-md);
+}
+
+.skeleton-text {
+  height: 16px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+}
+.skeleton-text.short { width: 40%; }
+.skeleton-text.medium { width: 65%; }
+.skeleton-text.long { width: 90%; }
+
+.skeleton-circle {
+  border-radius: var(--radius-full);
+  aspect-ratio: 1;
+}
+
+.skeleton-card {
+  border-radius: var(--radius-xl);
+  height: 140px;
+}
+
+.skeleton-image {
+  border-radius: var(--radius-lg);
+  aspect-ratio: 1;
+}
+
+/* ── 15. BOTTOM SHEET ───────────────────────────────────────── */
+.bottom-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: fadeInUp 200ms ease-out;
+}
+.bottom-sheet-overlay.closing {
+  animation: fadeOut 200ms ease-in forwards;
+}
+
+.bottom-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 151;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+  padding: 20px 20px calc(20px + var(--safe-bottom));
+  max-height: 85vh;
+  overflow-y: auto;
+  animation: slideUp 400ms cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.5);
+}
+.bottom-sheet.closing {
+  animation: slideDown 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Drag handle для bottom sheet */
+.bottom-sheet-handle {
+  width: 40px;
+  height: 4px;
+  background: var(--text-muted);
+  border-radius: var(--radius-full);
+  margin: 0 auto 16px;
+  opacity: 0.4;
+}
+
+.bottom-sheet-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+.bottom-sheet-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   SECTION 2: SCREEN STYLES
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 16. LOGIN SCREEN ───────────────────────────────────────── */
+.login-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg-primary);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Декоративные размытые круги на фоне — анимация float */
+.login-bg-mesh {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.login-bg-mesh::before {
+  content: '';
+  position: absolute;
+  top: 10%;
+  left: -10%;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.25), transparent 70%);
+  filter: blur(60px);
+  animation: floatSlow 12s ease-in-out infinite;
+}
+.login-bg-mesh::after {
+  content: '';
+  position: absolute;
+  bottom: 10%;
+  right: -10%;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.2), transparent 70%);
+  filter: blur(60px);
+  animation: floatSlow 15s ease-in-out infinite reverse;
+}
+
+/* Дополнительный cyan blob */
+.login-bg-mesh .blob-cyan {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 250px;
+  height: 250px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.12), transparent 70%);
+  filter: blur(80px);
+  transform: translate(-50%, -50%);
+  animation: float 10s ease-in-out infinite;
+}
+
+/* Логотип — крупный текст с градиентом */
+.login-logo {
+  position: relative;
+  z-index: 1;
+  font-size: 48px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 8px;
+  text-align: center;
+  filter: drop-shadow(0 0 30px rgba(168, 85, 247, 0.3));
+}
+
+.login-tagline {
+  position: relative;
+  z-index: 1;
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 32px;
+  text-align: center;
+}
+
+/* Login карточка — стеклянная */
+.login-card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 400px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  padding: 32px;
+  animation: fadeInUp 500ms ease-out 100ms both;
+}
+
+.login-card-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+.login-card-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+/* Login form fields */
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-form .input {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.login-form .btn-primary {
+  width: 100%;
+  margin-top: 8px;
+}
+
+/* Login footer */
+.login-footer {
+  position: relative;
+  z-index: 1;
+  margin-top: 24px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+
+
+/* Login logo container */
+.login-logo-container {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.login-logo-mark {
+  font-size: 32px;
+  color: var(--neon-purple);
+  margin-bottom: 4px;
+  filter: drop-shadow(0 0 20px rgba(168, 85, 247, 0.5));
+}
+
+.login-logo-text {
+  font-size: 52px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 30px rgba(168, 85, 247, 0.3));
+  line-height: 1.1;
+}
+
+/* Login glass card */
+.login-glass-card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 400px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-xl);
+  padding: 32px;
+  box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  animation: fadeInUp 500ms ease-out 100ms both;
+}
+
+/* Login form header */
+.login-form-header {
+  margin-bottom: 24px;
+}
+
+.login-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--neon-purple);
+  margin-bottom: 4px;
+}
+
+.login-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* Login input */
+.login-input {
+  width: 100%;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  font-size: 16px;
+  transition: all 200ms ease;
+  outline: none;
+}
+
+.login-input:focus {
+  border-color: var(--neon-purple);
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.15), var(--shadow-neon-purple);
+}
+
+.login-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Input group for floating labels */
+.input-group {
+  position: relative;
+  margin-bottom: 4px;
+}
+
+.input-group .login-input {
+  padding-top: 18px;
+  padding-bottom: 10px;
+}
+
+.input-label {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 16px;
+  pointer-events: none;
+  transition: all 200ms ease;
+}
+
+.login-input:focus ~ .input-label,
+.login-input:not(:placeholder-shown) ~ .input-label {
+  top: 8px;
+  transform: translateY(0);
+  font-size: 11px;
+  color: var(--neon-purple);
+}
+
+/* Login button */
+.login-btn {
+  width: 100%;
+  min-height: 52px;
+  padding: 14px 24px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--gradient-primary);
+  color: white;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 200ms ease;
+  box-shadow: 0 4px 16px rgba(168, 85, 247, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.login-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-neon-purple), 0 8px 24px rgba(168, 85, 247, 0.4);
+}
+
+.login-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.btn-arrow {
+  transition: transform 200ms ease;
+}
+
+.login-btn:hover .btn-arrow {
+  transform: translateX(4px);
+}
+
+/* Login blobs */
+.login-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+}
+
+.login-blob-1 {
+  top: 10%;
+  left: -10%;
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.3), transparent 70%);
+  animation: floatSlow 12s ease-in-out infinite;
+}
+
+.login-blob-2 {
+  bottom: 10%;
+  right: -10%;
+  width: 280px;
+  height: 280px;
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.25), transparent 70%);
+  animation: floatSlow 15s ease-in-out infinite reverse;
+}
+
+.login-blob-3 {
+  top: 50%;
+  left: 50%;
+  width: 250px;
+  height: 250px;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.15), transparent 70%);
+  animation: float 10s ease-in-out infinite;
+  transform: translate(-50%, -50%);
+}
+
+/* Login particles */
+.login-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.particle {
+  position: absolute;
+  width: var(--size, 3px);
+  height: var(--size, 3px);
+  left: var(--x, 50%);
+  bottom: -10px;
+  background: rgba(168, 85, 247, 0.4);
+  border-radius: 50%;
+  animation: floatParticle 8s ease-in-out var(--delay, 0s) infinite;
+}
+
+@keyframes floatParticle {
+  0% { transform: translateY(0) scale(0); opacity: 0; }
+  10% { opacity: 1; transform: translateY(-10vh) scale(1); }
+  90% { opacity: 0.3; }
+  100% { transform: translateY(-110vh) scale(0.5); opacity: 0; }
+}
+
+/* Login footer */
+.login-footer {
+  position: relative;
+  z-index: 1;
+  margin-top: 24px;
+  text-align: center;
+}
+
+.version-badge {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Back button styles */
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--bg-glass);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 200ms ease;
+  backdrop-filter: blur(12px);
+}
+
+.back-btn:hover {
+  background: rgba(168, 85, 247, 0.1);
+  color: var(--neon-purple);
+}
+
+/* ── 17. MAIN MENU SCREEN ───────────────────────────────────── */
+.menu-screen {
+  padding: 16px;
+  animation: fadeInUp 300ms ease-out;
+}
+
+.menu-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 16px;
+}
+
+.menu-card {
+  background: var(--bg-tertiary);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  transition: all 200ms ease;
+  cursor: pointer;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px;
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.menu-card::after {
+  content: '';
+  position: absolute;
+  top: -30px;
+  right: -30px;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.08), transparent 70%);
+  pointer-events: none;
+}
+
+.menu-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-full);
+  background: var(--gradient-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: #fff;
+  margin-bottom: 12px;
+  box-shadow: 0 4px 16px rgba(168, 85, 247, 0.3);
+}
+
+.menu-icon.cyan { background: var(--gradient-cyan); box-shadow: 0 4px 16px rgba(6, 182, 212, 0.3); }
+.menu-icon.green { background: var(--gradient-green); box-shadow: 0 4px 16px rgba(34, 197, 94, 0.3); }
+.menu-icon.warm { background: var(--gradient-warm); box-shadow: 0 4px 16px rgba(249, 115, 22, 0.3); }
+.menu-icon.pink { background: linear-gradient(135deg, #ec4899, #f43f5e); box-shadow: 0 4px 16px rgba(236, 72, 153, 0.3); }
+
+.menu-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.menu-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* ── 18. CATEGORIES SCREEN ──────────────────────────────────── */
+.category-screen {
+  padding: 16px;
+  animation: fadeInUp 300ms ease-out;
+}
+
+.category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+.category-item {
+  background: var(--bg-tertiary);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all 200ms ease;
+}
+
+.category-item:hover {
+  border-color: rgba(168, 85, 247, 0.2);
+  transform: translateX(4px);
+}
+
+.category-item:active {
+  transform: translateX(0) scale(0.99);
+}
+
+/* Завершённая категория — зелёная рамка + glow */
+.category-item.completed {
+  border-color: rgba(34, 197, 94, 0.4);
+  box-shadow: 0 0 16px rgba(34, 197, 94, 0.1), var(--shadow-card);
+}
+.category-item.completed .category-letter {
+  background: var(--gradient-green);
+  box-shadow: 0 0 16px rgba(34, 197, 94, 0.4);
+}
+
+/* Буква-круг с градиентом */
+.category-letter {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: var(--radius-full);
+  background: var(--gradient-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  text-transform: uppercase;
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
+}
+
+.category-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.category-name {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.category-meta {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Прогресс-бар */
+.category-progress {
+  width: 100%;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.06);
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.category-progress-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--gradient-primary);
+  transition: width 500ms cubic-bezier(0.16, 1, 0.3, 1);
+  min-width: 4px;
+}
+
+.category-progress-fill.complete {
+  background: var(--gradient-green);
+}
+
+/* Статус-badge */
+.category-status {
+  flex-shrink: 0;
+}
+
+/* ── 19. PRODUCTS GRID ──────────────────────────────────────── */
+.products-screen {
+  padding: 16px;
+  animation: fadeInUp 300ms ease-out;
+}
+
+.products-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  padding: 16px;
+}
+
+.product-card {
+  background: var(--bg-tertiary);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  padding: 0;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+  transition: all 200ms ease;
+}
+
+.product-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.product-card:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.product-card.selected {
+  border-color: rgba(168, 85, 247, 0.4);
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.15);
+}
+
+/* Контейнер изображения товара */
+.product-image-wrapper {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+}
+
+.product-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 300ms ease;
+}
+
+.product-card:hover .product-image {
+  transform: scale(1.05);
+}
+
+/* Градиентный оверлей снизу для читаемости текста */
+.product-image-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  background: linear-gradient(to top, rgba(10, 10, 15, 0.8), transparent);
+  pointer-events: none;
+}
+
+/* Бейдж количества — абсолютный top-left */
+.product-qty-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: var(--neon-red);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 800;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  z-index: 2;
+}
+
+/* Бейдж статуса склада — top-right */
+.product-stock-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 700;
+  z-index: 2;
+}
+
+/* Цветная точка для товара (маркировка) */
+.product-click-dot {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  z-index: 3;
+}
+
+/* Имя товара */
+.product-name {
+  padding: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 50px;
+}
+
+/* ── 20. PRICE CHECK SCREEN ─────────────────────────────────── */
+.price-check-screen {
+  padding: 16px;
+  animation: fadeInUp 300ms ease-out;
+}
+
+.price-check-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+  padding: 16px;
+}
+
+.price-check-card {
+  background: var(--bg-tertiary);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  padding: 12px;
+  border-radius: var(--radius-xl);
+  position: relative;
+  cursor: pointer;
+  transition: all 200ms ease;
+}
+
+.price-check-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(168, 85, 247, 0.2);
+}
+
+.price-check-image-wrapper {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.price-check-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius-lg);
+}
+
+/* Отметка (галочка/крестик) — top-right */
+.price-check-mark {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-full);
+  background: var(--neon-red);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 2;
+}
+
+.price-check-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Срок годности — цвет по светофору */
+.price-check-expiry {
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Светофор для сроков */
+.expiry-fresh    { color: var(--neon-green); }
+.expiry-warning  { color: var(--neon-yellow); }
+.expiry-critical { color: var(--neon-orange); }
+.expiry-expired  { color: var(--neon-red); }
+
+.expiry-fresh::before,
+.expiry-warning::before,
+.expiry-critical::before,
+.expiry-expired::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.expiry-fresh::before    { background: var(--neon-green); box-shadow: 0 0 8px rgba(34, 197, 94, 0.5); }
+.expiry-warning::before  { background: var(--neon-yellow); box-shadow: 0 0 8px rgba(234, 179, 8, 0.5); }
+.expiry-critical::before { background: var(--neon-orange); box-shadow: 0 0 8px rgba(249, 115, 22, 0.5); }
+.expiry-expired::before  { background: var(--neon-red); box-shadow: 0 0 8px rgba(239, 68, 68, 0.5); }
+
+/* ── 21. CALENDAR SCREEN ────────────────────────────────────── */
+.calendar-screen {
+  padding: 16px;
+  animation: fadeInUp 300ms ease-out;
+}
+
+/* Заголовок месяца/года */
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px 16px;
+}
+
+.calendar-month-year {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.calendar-nav-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: var(--bg-glass);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 200ms ease;
+}
+
+.calendar-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Дни недели */
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  padding: 0 16px 8px;
+}
+
+.calendar-weekday {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Сетка дней */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  padding: 0 16px;
+}
+
+.calendar-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 80px;
+  padding: 8px 4px;
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  transition: all 200ms ease;
+  position: relative;
+}
+
+.calendar-day:hover {
+  background: var(--bg-tertiary);
+}
+
+.calendar-day-number {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  margin-bottom: 4px;
+}
+
+/* Сегодня — neon purple круг + glow */
+.calendar-day.today .calendar-day-number {
+  background: var(--gradient-primary);
+  color: #fff;
+  box-shadow: var(--shadow-glow-purple);
+}
+
+/* Активный (выбранный) день */
+.calendar-day.active {
+  background: var(--bg-tertiary);
+  border-color: rgba(168, 85, 247, 0.4);
+}
+
+/* Другой месяц — приглушённый */
+.calendar-day.other-month .calendar-day-number {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+/* Есть события — цветная точка снизу */
+.calendar-day.has-events::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--neon-purple);
+  position: absolute;
+  bottom: 8px;
+  box-shadow: 0 0 6px rgba(168, 85, 247, 0.5);
+}
+
+.calendar-day.has-events.green::after  { background: var(--neon-green); box-shadow: 0 0 6px rgba(34, 197, 94, 0.5); }
+.calendar-day.has-events.red::after    { background: var(--neon-red); box-shadow: 0 0 6px rgba(239, 68, 68, 0.5); }
+.calendar-day.has-events.yellow::after { background: var(--neon-yellow); box-shadow: 0 0 6px rgba(234, 179, 8, 0.5); }
+.calendar-day.has-events.cyan::after   { background: var(--neon-cyan); box-shadow: 0 0 6px rgba(6, 182, 212, 0.5); }
+
+/* Событие в календаре (список под календарём) */
+.calendar-events-list {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.calendar-event-item {
+  background: var(--bg-tertiary);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: var(--radius-lg);
+  border-left: 3px solid var(--neon-purple);
+}
+
+.calendar-event-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.calendar-event-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.calendar-event-time {
+  font-size: 13px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* ── 22. ADMIN SCREEN ───────────────────────────────────────── */
+.admin-screen {
+  padding: 16px;
+  animation: fadeInUp 300ms ease-out;
+}
+
+/* Табы админки */
+.admin-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 16px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.admin-tabs::-webkit-scrollbar { display: none; }
+
+.admin-tab {
+  padding: 10px 16px;
+  border-radius: var(--radius-full);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 200ms ease;
+  flex-shrink: 0;
+}
+
+.admin-tab:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.admin-tab.active {
+  background: var(--gradient-primary);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 4px 16px rgba(168, 85, 247, 0.35);
+}
+
+/* Карточка статистики */
+.stat-card {
+  background: var(--bg-tertiary);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stat-value {
+  font-size: 32px;
+  font-weight: 800;
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.stat-value.cyan { background: var(--gradient-cyan); -webkit-background-clip: text; background-clip: text; }
+.stat-value.green { background: var(--gradient-green); -webkit-background-clip: text; background-clip: text; }
+.stat-value.warm { background: var(--gradient-warm); -webkit-background-clip: text; background-clip: text; }
+
+.stat-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stat-delta {
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.stat-delta.positive { color: var(--neon-green); }
+.stat-delta.negative { color: var(--neon-red); }
+
+/* Сетка статистики */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  padding: 16px;
+}
+
+/* Таблица админки */
+.admin-table-wrapper {
+  overflow-x: auto;
+  padding: 0 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.admin-table th {
+  text-align: left;
+  padding: 12px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  white-space: nowrap;
+}
+
+.admin-table td {
+  padding: 14px 16px;
+  color: var(--text-primary);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.admin-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* ── 23. REQUESTS SCREEN (Заявки на занос) ──────────────────── */
+.requests-screen {
+  padding: 16px;
+  animation: fadeInUp 300ms ease-out;
+}
+
+.request-card {
+  background: var(--bg-tertiary);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  padding: 16px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-radius: var(--radius-lg);
+}
+
+.request-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.request-id {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--neon-purple);
+}
+
+.request-date {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.request-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.request-info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.request-info-label {
+  color: var(--text-muted);
+  font-weight: 500;
+  min-width: 80px;
+}
+
+.request-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* ── 24. INSTALL PROMPT ─────────────────────────────────────── */
+.install-prompt {
+  position: fixed;
+  bottom: calc(72px + var(--safe-bottom));
+  left: 16px;
+  right: 16px;
+  z-index: 90;
+  background: var(--bg-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-xl);
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  animation: slideUp 400ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.install-prompt-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-lg);
+  background: var(--gradient-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.install-prompt-text {
+  flex: 1;
+}
+
+.install-prompt-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.install-prompt-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.install-prompt-close {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: var(--bg-glass);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  flex-shrink: 0;
+  transition: all 200ms ease;
+}
+
+.install-prompt-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SECTION 3: UTILITY CLASSES
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 25. TYPOGRAPHY UTILITIES ───────────────────────────────── */
+.text-hero   { font-size: 48px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
+.text-2xl    { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
+.text-xl     { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.3; }
+.text-lg     { font-size: 20px; font-weight: 600; line-height: 1.4; }
+.text-base   { font-size: 16px; font-weight: 500; line-height: 1.5; }
+.text-sm     { font-size: 14px; font-weight: 500; line-height: 1.5; }
+.text-caption{ font-size: 12px; font-weight: 600; line-height: 1.4; letter-spacing: 0.02em; }
+
+.text-primary   { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-muted     { color: var(--text-muted); }
+.text-purple    { color: var(--neon-purple); }
+.text-pink      { color: var(--neon-pink); }
+.text-cyan      { color: var(--neon-cyan); }
+.text-green     { color: var(--neon-green); }
+.text-red       { color: var(--neon-red); }
+.text-yellow    { color: var(--neon-yellow); }
+.text-orange    { color: var(--neon-orange); }
+
+.font-bold      { font-weight: 700; }
+.font-semibold  { font-weight: 600; }
+.font-medium    { font-weight: 500; }
+
+/* ── 26. SPACING UTILITIES ──────────────────────────────────── */
+.p-0  { padding: 0; }
+.p-4  { padding: 4px; }
+.p-8  { padding: 8px; }
+.p-12 { padding: 12px; }
+.p-16 { padding: 16px; }
+.p-20 { padding: 20px; }
+.p-24 { padding: 24px; }
+
+.m-0  { margin: 0; }
+.m-4  { margin: 4px; }
+.m-8  { margin: 8px; }
+.m-16 { margin: 16px; }
+
+.gap-4  { gap: 4px; }
+.gap-8  { gap: 8px; }
+.gap-12 { gap: 12px; }
+.gap-16 { gap: 16px; }
+
+/* ── 27. LAYOUT UTILITIES ───────────────────────────────────── */
+.flex      { display: flex; }
+.flex-col  { display: flex; flex-direction: column; }
+.flex-wrap { display: flex; flex-wrap: wrap; }
+.items-center { align-items: center; }
+.items-start  { align-items: flex-start; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.flex-1    { flex: 1; }
+.flex-none { flex: none; }
+
+.grid { display: grid; }
+.grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
+.grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
+.grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
+
+.w-full { width: 100%; }
+.h-full { height: 100%; }
+
+/* ── 28. VISUAL UTILITIES ───────────────────────────────────── */
+.gradient-text {
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-cyan  { background: var(--gradient-cyan); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.gradient-text-green { background: var(--gradient-green); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.gradient-text-warm  { background: var(--gradient-warm); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+
+.glass {
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.rounded-sm   { border-radius: var(--radius-sm); }
+.rounded-md   { border-radius: var(--radius-md); }
+.rounded-lg   { border-radius: var(--radius-lg); }
+.rounded-xl   { border-radius: var(--radius-xl); }
+.rounded-2xl  { border-radius: var(--radius-2xl); }
+.rounded-full { border-radius: var(--radius-full); }
+
+/* Line clamp */
+.line-clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Loader / Spinner */
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--neon-purple);
+  border-radius: var(--radius-full);
+  animation: spin 600ms linear infinite;
+}
+.spinner-sm { width: 16px; height: 16px; border-width: 2px; }
+.spinner-lg { width: 40px; height: 40px; border-width: 4px; }
+
+/* Divider */
+.divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+  margin: 16px 0;
+}
+
+/* Empty state */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-muted);
+}
+.empty-state-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+.empty-state-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+.empty-state-subtitle {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SECTION 4: RESPONSIVE DESIGN
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 29. MOBILE (< 640px) — Default, mobile-first ───────────── */
+/* Все стили выше — mobile-first. Здесь дополнительные mobile-specific */
+
+/* ── 30. TABLET (640px - 1024px) ────────────────────────────── */
+@media (min-width: 640px) {
+  .products-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+
+  .menu-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .price-check-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .category-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
+  .bottom-sheet {
+    left: 10%;
+    right: 10%;
+    border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+  }
+
+  .login-card {
+    padding: 40px;
+  }
+}
+
+/* ── 31. DESKTOP (> 1024px) ─────────────────────────────────── */
+@media (min-width: 1024px) {
+  .products-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .menu-grid {
+    grid-template-columns: repeat(4, 1fr);
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+
+  .price-check-grid {
+    grid-template-columns: repeat(4, 1fr);
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(4, 1fr);
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+
+  .category-list {
+    grid-template-columns: repeat(2, 1fr);
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+
+  .requests-screen,
+  .category-screen,
+  .products-screen,
+  .price-check-screen,
+  .calendar-screen,
+  .admin-screen {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .bottom-sheet {
+    left: 25%;
+    right: 25%;
+  }
+
+  .header {
+    padding-left: max(16px, calc((100vw - 1200px) / 2 + 16px));
+    padding-right: max(16px, calc((100vw - 1200px) / 2 + 16px));
+  }
+}
+
+/* ── 32. REDUCED MOTION ─────────────────────────────────────── */
+/* Уважаем prefers-reduced-motion — отключаем анимации */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SECTION 5: PRINT STYLES
+   ═══════════════════════════════════════════════════════════════ */
+@media print {
+  .header,
+  .bottom-nav,
+  .bottom-nav-indicator,
+  .install-prompt,
+  .btn {
+    display: none !important;
+  }
+
+  body, html, #app {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  .card, .glass-card {
+    background: #f5f5f5 !important;
+    border: 1px solid #ddd !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+
+  .product-card, .menu-card, .category-item {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .products-grid {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+
+  .badge {
+    border: 1px solid #ccc !important;
+    background: #eee !important;
+    color: #333 !important;
+  }
+}
