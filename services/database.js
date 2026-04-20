@@ -1,0 +1,607 @@
+const Database = require('better-sqlite3');
+const path = require('path');
+const bcrypt = require('bcryptjs');
+
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../data/zan11.db');
+let db;
+
+function getDB() {
+  if (!db) {
+    db = new Database(DB_PATH);
+    db.pragma('journal_mode = WAL');
+  }
+  return db;
+}
+
+function initDB() {
+  const db = getDB();
+
+  // Users table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      login TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT DEFAULT 'staff' CHECK(role IN ('admin', 'staff')),
+      is_active INTEGER DEFAULT 1,
+      last_login_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Products table - добавляем поля для картинок
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS products (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      external_id TEXT,
+      category_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      vendor_code TEXT,
+      picture TEXT,
+      picture_original TEXT,
+      description TEXT,
+      price REAL,
+      barcode TEXT,
+      expiry_date TEXT,
+      stock_quantity INTEGER DEFAULT 0,
+      box_count INTEGER DEFAULT 0,
+      block_count INTEGER DEFAULT 0,
+      hidden_from_product_check INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Migration: add box_count and block_count if they don't exist (for existing DBs)
+  try {
+    db.prepare('SELECT box_count FROM products LIMIT 1').get();
+  } catch (e) {
+    db.exec('ALTER TABLE products ADD COLUMN box_count INTEGER DEFAULT 0');
+    db.exec('ALTER TABLE products ADD COLUMN block_count INTEGER DEFAULT 0');
+    console.log('Migration: added box_count and block_count columns');
+  }
+
+  // Categories table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS categories (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL
+    )
+  `);
+
+  // Carry requests table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS carry_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      category_id INTEGER NOT NULL,
+      product_id INTEGER NOT NULL,
+      quantity INTEGER NOT NULL,
+      status TEXT DEFAULT 'pending',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      completed_at DATETIME
+    )
+  `);
+
+  // Price check pages table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS price_check_pages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category_id INTEGER NOT NULL,
+      page_number INTEGER NOT NULL,
+      locked_by INTEGER,
+      locked_at DATETIME,
+      UNIQUE(category_id, page_number)
+    )
+  `);
+
+  // Price check items table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS price_check_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      page_id INTEGER NOT NULL,
+      product_id INTEGER NOT NULL,
+      has_problem INTEGER DEFAULT 0,
+      price_checked INTEGER DEFAULT 0,
+      checked_by INTEGER,
+      checked_at DATETIME
+    )
+  `);
+
+  // Weekly calendar items table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS weekly_calendar_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date DATE NOT NULL,
+      title TEXT NOT NULL,
+      text TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // User actions log table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_actions_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      action_type TEXT NOT NULL,
+      details TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // User daily stats table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_daily_stats (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      date DATE DEFAULT CURRENT_DATE,
+      carry_categories INTEGER DEFAULT 0,
+      product_changes INTEGER DEFAULT 0,
+      price_categories INTEGER DEFAULT 0,
+      marks INTEGER DEFAULT 0,
+      prints INTEGER DEFAULT 0,
+      mistakes INTEGER DEFAULT 0,
+      score INTEGER DEFAULT 0,
+      UNIQUE(user_id, date)
+    )
+  `);
+
+  // Sync status table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sync_status (
+      id INTEGER PRIMARY KEY,
+      last_sync_at DATETIME,
+      status TEXT DEFAULT 'idle',
+      progress INTEGER DEFAULT 0,
+      stage TEXT,
+      message TEXT,
+      products_count INTEGER DEFAULT 0
+    )
+  `);
+
+  // ===== НОВЫЕ ТАБЛИЦЫ ДЛЯ СОВМЕСТНОЙ РАБОТЫ =====
+
+  // Completed categories table - для отслеживания завершённых категорий
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS completed_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      completed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(category_id)
+    )
+  `);
+
+  // Collected items table - для отслеживания собранных товаров (видно всем)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS collected_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      collected_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(product_id)
+    )
+  `);
+
+  // Assembly sessions table - для сессий сборки
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS assembly_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT DEFAULT 'Сборка',
+      status TEXT DEFAULT 'active',
+      created_by INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      completed_at DATETIME
+    )
+  `);
+
+  // ===== ТАБЛИЦЫ ДЛЯ ЦВЕТНЫХ КРУЖКОВ =====
+
+  // User colors table - цвета для каждого пользователя
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_colors (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL UNIQUE,
+      color TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Product clicks table - кто нажал на какой товар
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS product_clicks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      category_id INTEGER NOT NULL,
+      clicked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(product_id, user_id)
+    )
+  `);
+
+  // ===== НОВАЯ ТАБЛИЦА ДЛЯ ПРОВЕРКИ ЦЕННИКОВ =====
+
+  // Price check marks table - новая система отметок для ценников
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS price_check_marks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      mark_type TEXT NOT NULL,
+      new_expiry TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(product_id)
+    )
+  `);
+
+  // Insert default categories
+  const categories = [
+    { id: 54, name: 'Жидкие конфеты' },
+    { id: 57, name: 'Карамель, леденцы, шипучки' },
+    { id: 65, name: 'Шоколад' },
+    { id: 81, name: 'Пирожные, бисквиты, печенье' },
+    { id: 85, name: 'Мармелад, зефир, драже' },
+    { id: 92, name: 'Жевательная резинка' },
+    { id: 97, name: 'Жевательные конфеты' },
+    { id: 101, name: 'ЛЕТО26' },
+    { id: 105, name: 'Бакалея' }
+  ];
+
+  const insertCat = db.prepare('INSERT OR IGNORE INTO categories (id, name) VALUES (?, ?)');
+  categories.forEach(c => insertCat.run(c.id, c.name));
+
+  // Create admin user from environment only (C-5: no hardcoded passwords)
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (adminPassword) {
+    db.prepare(`INSERT OR IGNORE INTO users (id, login, password_hash, role, is_active)
+      VALUES (1, 'admin', ?, 'admin', 1)`).run(bcrypt.hashSync(adminPassword, 10));
+    console.log('Admin user created from ADMIN_PASSWORD env');
+  } else {
+    console.warn('WARN: ADMIN_PASSWORD env not set. No admin user created.');
+    console.warn('WARN: Set ADMIN_PASSWORD and restart to create admin account.');
+  }
+
+  // ===== ТАБЛИЦЫ ДЛЯ TO-DO ЗАДАЧ =====
+
+  // Todo items table - задачи для сотрудников
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS todo_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date DATE NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      is_completed INTEGER DEFAULT 0,
+      completed_by INTEGER,
+      completed_by_name TEXT,
+      completed_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // ===== ТАБЛИЦА ДЛЯ НАЧАЛА СМЕНЫ =====
+
+  // Shift start table - отслеживание начала рабочего дня
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS shift_start (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      user_name TEXT NOT NULL,
+      start_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+      start_time_yakutsk TEXT,
+      status TEXT DEFAULT 'on_time',
+      date TEXT DEFAULT CURRENT_DATE,
+      UNIQUE(user_id, date)
+    )
+  `);
+
+  // ===== ТАБЛИЦЫ ДЛЯ ПРЕТЕНЗИЙ =====
+
+  // Claims table - претензии от покупателей
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS claims (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      check_number TEXT,
+      purchase_time TEXT,
+      order_info TEXT,
+      missing_products TEXT,
+      claim_text TEXT NOT NULL,
+      attachment_path TEXT,
+      attachment_type TEXT,
+      status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'in_progress', 'approved', 'rejected')),
+      created_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      resolved_at DATETIME
+    )
+  `);
+
+  // Claim tasks table - задачи по рассмотрению претензий
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS claim_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      claim_id INTEGER NOT NULL,
+      assigned_to INTEGER,
+      assigned_to_name TEXT,
+      resolution TEXT,
+      evidence_path TEXT,
+      evidence_type TEXT,
+      status TEXT DEFAULT 'open' CHECK(status IN ('open', 'resolved')),
+      verdict TEXT CHECK(verdict IN ('approved', 'rejected', NULL)),
+      started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      resolved_at DATETIME
+    )
+  `);
+
+  // ===== ТАБЛИЦА ПРАЗДНИЧНЫХ ДНЕЙ =====
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS holidays (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date DATE NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // ===== ТАБЛИЦА ИМЕННЫХ ЗАДАЧ (назначение сотрудников) =====
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS todo_assignees (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      todo_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      UNIQUE(todo_id, user_id)
+    )
+  `);
+
+  // ===== ТАБЛИЦА ПРОФИЛЕЙ СОТРУДНИКОВ =====
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_profiles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL UNIQUE,
+      avatar_path TEXT,
+      phone TEXT,
+      email TEXT,
+      bio TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // ===== ТАБЛИЦА ДОКУМЕНТОВ СОТРУДНИКОВ =====
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      file_type TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // ===== ТАБЛИЦА ЧАТА =====
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      user_name TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // ===== ТАБЛИЦА ЗАПРОСОВ (ОТПУСК, АВАНС) =====
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      user_name TEXT NOT NULL,
+      request_type TEXT NOT NULL CHECK(request_type IN ('vacation', 'advance')),
+      description TEXT,
+      status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected')),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      resolved_at DATETIME,
+      resolved_by INTEGER
+    )
+  `);
+
+  // ===== ТАБЛИЦА СПЕЦ ЗАДАНИЙ =====
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS special_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      user_name TEXT NOT NULL,
+      description TEXT NOT NULL,
+      complexity INTEGER DEFAULT 3 CHECK(complexity BETWEEN 1 AND 5),
+      photo_path TEXT,
+      status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected')),
+      admin_comment TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      resolved_at DATETIME,
+      resolved_by INTEGER
+    )
+  `);
+
+  // ===== ТАБЛИЦА ШКАЛЫ СЛОЖНОСТИ =====
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS complexity_scale (
+      id INTEGER PRIMARY KEY,
+      level INTEGER NOT NULL UNIQUE,
+      label TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Insert default complexity scale if empty
+  const scaleCount = db.prepare('SELECT COUNT(*) as count FROM complexity_scale').get().count;
+  if (scaleCount === 0) {
+    const scaleLabels = [
+      { level: 1, label: 'Очень легко' },
+      { level: 2, label: 'Легко' },
+      { level: 3, label: 'Средне' },
+      { level: 4, label: 'Сложно' },
+      { level: 5, label: 'Очень сложно' }
+    ];
+    const insertScale = db.prepare('INSERT INTO complexity_scale (level, label) VALUES (?, ?)');
+    scaleLabels.forEach(s => insertScale.run(s.level, s.label));
+  }
+
+  // ===== ТАБЛИЦА ПРОВЕРЕННЫХ СРОКОВ ГОДНОСТИ =====
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS expiry_checks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL UNIQUE,
+      checked_by INTEGER NOT NULL,
+      original_expiry TEXT,
+      new_expiry TEXT,
+      is_confirmed INTEGER DEFAULT 0,
+      checked_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // ===== PUSH ПОДПИСКИ =====
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      endpoint TEXT NOT NULL UNIQUE,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Миграция: добавляем timer поля в todo_items если их нет
+  try {
+    db.prepare('SELECT timer_hours FROM todo_items LIMIT 1').get();
+  } catch (e) {
+    db.exec('ALTER TABLE todo_items ADD COLUMN timer_hours INTEGER DEFAULT 0');
+    db.exec('ALTER TABLE todo_items ADD COLUMN timer_started_at DATETIME');
+    db.exec('ALTER TABLE todo_items ADD COLUMN timer_deadline_at DATETIME');
+    db.exec('ALTER TABLE todo_items ADD COLUMN timer_expired INTEGER DEFAULT 0');
+    console.log('Migration: added timer columns to todo_items');
+  }
+
+  // ===== ТАБЛИЦА ЧТЕНИЯ ЧАТА =====
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS chat_read_status (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL UNIQUE,
+      last_read_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // ===== ТАБЛИЦА ИНСТРУКЦИЙ =====
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS instructions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      content TEXT,
+      file_path TEXT,
+      category TEXT DEFAULT 'general',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // ===== БАЛЬНАЯ СИСТЕМА (ZAN 1.2 Scoring) =====
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS score_weights (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      action_type TEXT NOT NULL UNIQUE,
+      basket TEXT NOT NULL CHECK(basket IN ('productivity','quality','initiative','discipline','bonus')),
+      label TEXT NOT NULL,
+      points INTEGER NOT NULL DEFAULT 0,
+      daily_limit INTEGER DEFAULT 0,
+      is_active INTEGER DEFAULT 1,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS score_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      user_name TEXT,
+      action_type TEXT NOT NULL,
+      basket TEXT NOT NULL,
+      label TEXT NOT NULL,
+      points INTEGER NOT NULL,
+      raw_points INTEGER NOT NULL,
+      streak_multiplier REAL DEFAULT 1.0,
+      context TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS score_streaks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL UNIQUE,
+      consecutive_on_time_days INTEGER DEFAULT 0,
+      last_shift_date TEXT,
+      total_multiplier REAL DEFAULT 1.0,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS score_dedup (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      action_type TEXT NOT NULL,
+      entity_id TEXT,
+      date TEXT DEFAULT CURRENT_DATE,
+      UNIQUE(user_id, action_type, entity_id, date)
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS score_daily_caps (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      action_type TEXT NOT NULL,
+      count INTEGER DEFAULT 0,
+      date TEXT DEFAULT CURRENT_DATE,
+      UNIQUE(user_id, action_type, date)
+    )
+  `);
+
+  // Insert default weights if table is empty
+  const weightsCount = db.prepare('SELECT COUNT(*) as c FROM score_weights').get().c;
+  if (weightsCount === 0) {
+    const defaults = [
+      // Productivity
+      { action_type: 'carry_category', basket: 'productivity', label: 'Вынос категории', points: 15, daily_limit: 20 },
+      { action_type: 'price_check_mark', basket: 'productivity', label: 'Проверка ценника', points: 2, daily_limit: 100 },
+      { action_type: 'product_barcode_check', basket: 'productivity', label: 'Проверка штрихкода', points: 3, daily_limit: 50 },
+      { action_type: 'expiry_check', basket: 'productivity', label: 'Проверка срока годности', points: 5, daily_limit: 30 },
+      // Quality
+      { action_type: 'claim_resolved', basket: 'quality', label: 'Разрешение претензии', points: 20, daily_limit: 10 },
+      { action_type: 'mistake', basket: 'quality', label: 'Ошибка', points: -10, daily_limit: 0 },
+      // Initiative
+      { action_type: 'todo_completed', basket: 'initiative', label: 'Выполнение задачи', points: 10, daily_limit: 10 },
+      { action_type: 'special_task_approved', basket: 'initiative', label: 'Спец задание одобрено', points: 25, daily_limit: 5 },
+      // Discipline
+      { action_type: 'shift_on_time', basket: 'discipline', label: 'Вовремя на смену', points: 5, daily_limit: 1 },
+      { action_type: 'shift_late', basket: 'discipline', label: 'Опоздание', points: -10, daily_limit: 1 },
+      { action_type: 'shift_no_show', basket: 'discipline', label: 'Не выход', points: -20, daily_limit: 1 },
+    ];
+    const iw = db.prepare('INSERT INTO score_weights (action_type, basket, label, points, daily_limit) VALUES (?,?,?,?,?)');
+    defaults.forEach(w => iw.run(w.action_type, w.basket, w.label, w.points, w.daily_limit));
+  }
+
+  // Индексы производительности (M-1)
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_sh_user_date ON score_history(user_id, created_at)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_sh_date ON score_history(created_at)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_sh_basket ON score_history(basket, created_at)`);
+
+  // Init sync status
+  db.prepare(`INSERT OR IGNORE INTO sync_status (id) VALUES (1)`).run();
+
+  console.log('Database initialized (ZAN 1.2)');
+}
+
+module.exports = { getDB, initDB };
