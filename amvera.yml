@@ -1,0 +1,12 @@
+meta:
+  environment: nodejs
+  toolchain:
+    name: npm
+    version: "20"
+build:
+  skip: false
+run:
+  persistenceMount: /data
+  command: node server.js
+  containerPort: 80
+  servicePort: 80
